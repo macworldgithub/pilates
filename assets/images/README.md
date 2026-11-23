@@ -1,6 +1,6 @@
 # Prototype image assets
 
-The prototype now bundles these local images; it makes no runtime image requests. The Pilates studio and instructor photos are illustrative sample imagery, not MoveActive partner content or the actual person represented by the sample instructor profile. Product images come from MoveActive's public product listings.
+These are source copies of the prototype artwork. At runtime the app loads image URLs returned by the backend, served from `pilates-backend/public/images` under `/media/images/`. The Pilates studio and instructor photos are illustrative sample imagery, not MoveActive partner content or the actual person represented by the sample instructor profile. Product images come from MoveActive's public product listings.
 
 ```text
 assets/images/
@@ -14,13 +14,13 @@ assets/images/
   instructors/
     mia-chen.jpg
   products/
-    grip-socks-pink.jpg
+    grip-socks-pink.png
     grip-socks-blue.jpg
-    yoga-mat-espresso.jpg
+    yoga-mat-espresso.png
     pilates-starter-bundle.jpg
 ```
 
-The app currently uses **10 local image files**. Replace them with approved brand or studio imagery if you prefer; keep the same filenames or update the `require(...)` paths in `src/data/mockData.ts`.
+The backend packages **10 image files**. Replace its copies with approved brand or studio imagery, retaining filenames or updating the seeded image URLs. `src/data/artwork.ts` resolves backend URLs; `src/components/OrbitImage.tsx` provides failed-image retry UI. Seeded v1 records also use this illustrative artwork.
 
 ## Image sources
 

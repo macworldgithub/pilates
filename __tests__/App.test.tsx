@@ -3,11 +3,12 @@ import ReactTestRenderer, { act } from 'react-test-renderer';
 import { TextInput } from 'react-native';
 import App from '../App';
 import { api } from '../src/api/client';
+import type { Profile } from '../src/api/types';
 import { BottomNav, Button } from '../src/components/OrbitUI';
 import { ProductCard } from '../src/components/OrbitUI';
 import { StudioCard } from '../src/components/OrbitCards';
 
-const profile = { area: 'Melbourne, VIC', latitude: -37.84, longitude: 144.98, formats: ['reformer'], interests: ['strength'], onboardingComplete: true };
+const profile: Profile = { area: 'Melbourne, VIC', latitude: -37.84, longitude: 144.98, formats: ['reformer'], interests: ['strength'], onboardingComplete: true };
 const studio = { id: 'core-collective', name: 'Core Collective', address: '12 Greville Street, Prahran VIC', formats: ['reformer', 'mat'], description: 'Studio description', partnerType: 'partner', websiteUrl: 'https://example.com', bookingUrl: 'https://example.com/book', instructors: [], workouts: [], referrals: [] };
 const product = { id: 'grip-socks-pink', title: 'Crew Grip Socks · Sweetie Candy Pink', description: 'Pink grip socks', collection: 'grip-socks', currency: 'AUD', variants: [{ id: 'pink-m', title: 'M / Candy Pink', price: 2295, available: true }], bundleProductIds: [] };
 const cartItem = { productId: product.id, variantId: 'pink-m', quantity: 1, productTitle: product.title, variantTitle: 'M / Candy Pink', currency: 'AUD', unitPrice: 2295, lineTotal: 2295, available: true };
@@ -29,6 +30,8 @@ beforeEach(() => {
   });
   jest.spyOn(api, 'referrals').mockResolvedValue(list([]));
   jest.spyOn(api, 'adminLogin').mockResolvedValue({ accessToken: 'issued-admin-token', expiresAt: '2030-01-01' });
+  jest.spyOn(api, 'staffLogin').mockResolvedValue({ id: 'session', profile, accountType: 'staff', expiresAt: '2030-01-01' });
+  jest.spyOn(api, 'staffLogout').mockResolvedValue({ id: 'session', profile, accountType: 'guest', expiresAt: '2030-01-01' });
   jest.spyOn(api, 'studios').mockResolvedValue(list([studio]) as any);
   jest.spyOn(api, 'workouts').mockResolvedValue(list([]));
   jest.spyOn(api, 'products').mockResolvedValue(list([product]) as any);
@@ -54,7 +57,7 @@ test('restores a session and opens the specific API-backed studio selected by th
   await step(() => tree.root.findByType(StudioCard).props.onPress());
   expect(api.studio).toHaveBeenCalledWith('core-collective');
   expect(JSON.stringify(tree.toJSON())).toContain('12 Greville Street, Prahran VIC');
-});
+}, 15000); // The first native render loads React Native's lazy test components.
 test('onboarding persists the selected interests and format before entering discovery', async () => {
   (api.initialize as jest.Mock).mockResolvedValue({ id: 'session', profile: {} });
   jest.spyOn(api, 'profile').mockResolvedValue({ id: 'session', profile } as any);
@@ -73,10 +76,14 @@ test('product -> bag -> quote -> confirmed order uses API amounts and clears the
   expect(api.product).toHaveBeenCalledWith(product.id);
   await step(() => button('Add to bag · AUD 22.95').props.onPress());
   expect(api.putItem).toHaveBeenCalledWith(product.id, 'pink-m', 1);
-  expect(tree.root.findByType(BottomNav).props.bagCount).toBe(1);
+  expect(button('View bag (1)')).toBeDefined();
   await step(() => button('View bag (1)').props.onPress());
   await step(() => button('Review demo checkout').props.onPress());
   expect(api.quote).toHaveBeenCalledWith({ fulfillment: 'delivery', source: 'app' });
+  const { TopBar } = require('../src/components/OrbitUI');
+  await step(() => tree.root.findByType(TopBar).props.onBack());
+  expect(JSON.stringify(tree.toJSON())).toContain('Your bag');
+  await step(() => button('Review demo checkout').props.onPress());
   await step(() => button('Confirm demo order').props.onPress());
   expect(api.checkout).toHaveBeenCalledWith({ fulfillment: 'delivery', source: 'app' }, expect.stringMatching(/^app-/));
   expect(JSON.stringify(tree.toJSON())).toContain('demo-api-order');
@@ -120,6 +127,20 @@ test('admin logs in with username/password through the backend before loading pr
   expect(JSON.stringify(tree.toJSON())).toContain('Core Collective');
 });
 
+test('staff can sign in with the shared account and sign out without losing the prototype session', async () => {
+  await render();
+  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
+  await step(() => button('Staff sign in').props.onPress());
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Staff password')!.props.onChangeText('OrbitStaff123!'));
+  await step(() => button('Sign in as staff').props.onPress());
+  expect(api.staffLogin).toHaveBeenCalledWith('staff', 'OrbitStaff123!');
+  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
+  expect(JSON.stringify(tree.toJSON())).toContain('Internal staff account');
+  await step(() => button('Sign out of staff account').props.onPress());
+  expect(api.staffLogout).toHaveBeenCalled();
+  expect(JSON.stringify(tree.toJSON())).toContain('Your demo profile');
+});
+
 test('admin edits persist through the protected API instead of a local save notice', async () => {
   jest.spyOn(api, 'adminList').mockImplementation(async kind => list(kind === 'studios' ? [{ ...studio, city: 'Melbourne', latitude: -37.84, longitude: 144.98 }] : []) as any);
   jest.spyOn(api, 'adminSave').mockResolvedValue({});
@@ -158,4 +179,57 @@ test('rejected admin credentials leave the login form visible and do not load pr
   expect(api.adminList).not.toHaveBeenCalled();
   expect(JSON.stringify(tree.toJSON())).toContain('Invalid username or password');
   expect(button('Log in')).toBeDefined();
+});
+
+test('session studio edit adds the selected variant with its instructor connection', async () => {
+  const instructor = { id: 'mia-chen', name: 'Mia Chen' };
+  const workout = { id: 'reformer-reset', title: 'Reformer Reset', level: 'beginner', format: 'reformer', durationMinutes: 15, studioId: studio.id, instructorIds: [instructor.id], instructors: [instructor], studio, products: [product] };
+  (api.workouts as jest.Mock).mockResolvedValue(list([workout]));
+  (api.referrals as jest.Mock).mockResolvedValue(list([{ code: 'MIA10', ownerId: instructor.id, ownerType: 'instructor', owner: instructor }]));
+  jest.spyOn(api, 'workout').mockResolvedValue(workout as any);
+  jest.spyOn(api, 'applyReferral').mockResolvedValue({});
+  jest.spyOn(api, 'putItem').mockResolvedValue(cart as any);
+  await render();
+  const { WorkoutCard } = require('../src/components/OrbitCards');
+  await step(() => tree.root.findByType(WorkoutCard).props.onPress());
+  await step(() => tree.root.findAll(n => n.props.accessibilityLabel === 'Shop this studio edit' && typeof n.props.onPress === 'function')[0].props.onPress());
+  expect(JSON.stringify(tree.toJSON())).toContain('WORN IN THIS SESSION');
+  await step(() => tree.root.findAll(n => n.props.accessibilityLabel === `View ${product.title}` && typeof n.props.onPress === 'function')[0].props.onPress());
+  const { TopBar } = require('../src/components/OrbitUI');
+  await step(() => tree.root.findByType(TopBar).props.onBack());
+  expect(JSON.stringify(tree.toJSON())).toContain('WORN IN THIS SESSION');
+  await step(() => button('Add to bag · AUD 22.95').props.onPress());
+  expect(api.applyReferral).toHaveBeenCalledWith('MIA10');
+  expect(api.putItem).toHaveBeenCalledWith(product.id, 'pink-m', 1);
+  expect(JSON.stringify(tree.toJSON())).toContain('Your bag');
+});
+
+test('premium concept expands trial details and opens the Move sessions tab', async () => {
+  await render();
+  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
+  await step(() => button('Explore premium membership').props.onPress());
+  expect(JSON.stringify(tree.toJSON())).toContain('More ways to move.');
+  await step(() => tree.root.findAll(n => n.props.accessibilityState?.expanded === false && typeof n.props.onPress === 'function')[0].props.onPress());
+  expect(JSON.stringify(tree.toJSON())).toContain('no subscription or automatic charge');
+  await step(() => button('Explore premium sessions').props.onPress());
+  expect(tree.root.findByType(BottomNav).props.screen).toBe('move');
+});
+
+test('discovery search reaches studio and instructor-aware workout searches', async () => {
+  await render();
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Search studios, classes, instructors')!.props.onChangeText('Mia'));
+  expect(api.studios).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'Mia' }));
+  expect(api.workouts).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'Mia' }));
+});
+
+test('example delivery fields do not send personal details to demo checkout', async () => {
+  (api.cart as jest.Mock).mockResolvedValue(cart);
+  jest.spyOn(api, 'quote').mockResolvedValue(quote as any);
+  jest.spyOn(api, 'checkout').mockResolvedValue({ ...quote, id: 'example-form-order' } as any);
+  await render();
+  await step(() => tree.root.findByType(BottomNav).props.onSelect('bag'));
+  await step(() => button('Review demo checkout').props.onPress());
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Email address')!.props.onChangeText('sample@example.com'));
+  await step(() => button('Confirm demo order').props.onPress());
+  expect(api.checkout).toHaveBeenCalledWith({ fulfillment: 'delivery', source: 'app' }, expect.any(String));
 });

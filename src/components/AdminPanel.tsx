@@ -1,5 +1,6 @@
+import { OrbitImage } from './OrbitImage';
 import React, { useEffect, useState } from 'react';
-import { Image, ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, TextInput, View } from 'react-native';
 import { api } from '../api/client';
 import type { Affiliation, Instructor, Studio } from '../api/types';
 import { artwork } from '../data/artwork';
@@ -70,7 +71,7 @@ export function AdminPanel({ task, busy, onChanged }: Props) {
         <Button label="Save affiliation" disabled={busy || !studioId || !instructorId} onPress={() => task(async () => { await api.adminAffiliation(studioId, instructorId); await load(); await onChanged(); })} />
       </> : <>
         <Button label={`Add ${kind === 'studios' ? 'studio' : 'instructor'}`} secondary disabled={busy} onPress={() => edit(null)} />
-        {editing === undefined ? (kind === 'studios' ? studios : instructors).map(record => <View key={record.id} style={styles.infoBox}><Image source={artwork(record)} style={styles.adminThumb} /><Text style={styles.cardTitle}>{record.name}</Text><Text style={styles.meta}>{record.published ? 'Published' : 'Archived / draft'}</Text><Button small label="Edit record" onPress={() => edit(record)} /></View>) : <View style={styles.adminForm}>
+        {editing === undefined ? (kind === 'studios' ? studios : instructors).map(record => <View key={record.id} style={styles.infoBox}><OrbitImage source={artwork(record)} style={styles.adminThumb} /><Text style={styles.cardTitle}>{record.name}</Text><Text style={styles.meta}>{record.published ? 'Published' : 'Archived / draft'}</Text><Button small label="Edit record" onPress={() => edit(record)} /></View>) : <View style={styles.adminForm}>
           {field('Name', name, setName)}{field(kind === 'studios' ? 'Description' : 'Bio', detail, setDetail)}
           {kind === 'studios' && <>{field('Address', address, setAddress)}{field('City', city, setCity)}{field('Latitude', latitude, setLatitude)}{field('Longitude', longitude, setLongitude)}{field('Website URL', website, setWebsite)}<View style={styles.chipRow}>{['reformer', 'mat'].map(f => <Chip key={f} label={f} active={formats.includes(f)} onPress={() => setFormats(old => old.includes(f) ? old.filter(x => x !== f) : [...old, f])} />)}</View></>}
           {kind === 'instructors' && <Text style={styles.finePrint}>New instructors are studio-led. Add an affiliation to make their published profile discoverable.</Text>}

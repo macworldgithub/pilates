@@ -60,6 +60,24 @@ test('exposes API errors without treating a rejection as a successful purchase',
   await expect(new OrbitApi('http://test').quote({ fulfillment: 'delivery', source: 'app' })).rejects.toEqual(new ApiError(400, 'Cart is empty'));
 });
 
+test('staff login and logout use the current session without replacing its token', async () => {
+  const client = new OrbitApi('http://test');
+  fetchMock.mockResolvedValueOnce(response({ id: 'session', token: 'session-token', profile: {} }));
+  await client.initialize();
+  fetchMock.mockResolvedValue(response({ id: 'session', accountType: 'staff', profile: {} }));
+  await client.staffLogin('staff', 'OrbitStaff123!');
+  expect(fetchMock).toHaveBeenLastCalledWith('http://test/auth/login', expect.objectContaining({
+    method: 'POST',
+    headers: expect.objectContaining({ Authorization: expect.any(String) }),
+    body: JSON.stringify({ username: 'staff', password: 'OrbitStaff123!' }),
+  }));
+  await client.staffLogout();
+  expect(fetchMock).toHaveBeenLastCalledWith('http://test/auth/logout', expect.objectContaining({
+    method: 'POST',
+    headers: expect.objectContaining({ Authorization: expect.any(String) }),
+  }));
+});
+
 test('admin login exchanges fixed credentials for a backend token and logout revokes it', async () => {
   const client = new OrbitApi('http://test');
   fetchMock.mockResolvedValueOnce(response({ accessToken: 'server-issued', expiresAt: '2030-01-01' })).mockResolvedValue(response({}));

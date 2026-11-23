@@ -33,7 +33,7 @@ npm run ios
 - Studio and instructor referral concept with sample attribution code
 - Internal partner admin preview for studios and studio-led instructor affiliations
 
-The screen flow and API-driven interactions are composed in `App.tsx`. Shared presentation styles live in `src/components/OrbitUI.tsx`; dynamic cards and internal management live in `OrbitCards.tsx` and `AdminPanel.tsx`. API contracts, requests and host configuration live in `src/api`. Business records are seeded by `../pilates-backend/src/ui-seed-data.ts`. Images come from the backend's `imageUrl` fields and `/media/images/*` routes. `src/data/artwork.ts` only resolves relative media paths against the API host; it contains no local artwork or record-ID mappings. Onboarding areas, interest options, hero images and available referral codes also come from the API.
+The screen flow and API-driven interactions are composed in `App.tsx`. Shared presentation styles live in `src/components/OrbitUI.tsx`; dynamic cards and internal management live in `OrbitCards.tsx` and `AdminPanel.tsx`. API contracts, requests and host configuration live in `src/api`. Business records are seeded by `../pilates-backend/src/ui-seed-data.ts`. Images come from the backend's `imageUrl` / optional `imageUrls` fields and `/media/images/*` routes. `src/data/artwork.ts` resolves media paths and stale development-host URLs against the active API host; it contains no local artwork or record-ID mappings. Onboarding areas, interest options, hero images and available referral codes also come from the API.
 
 Community, bookings, self-service portals, independent instructor approval workflows, live inventory, production Shopify checkout, payments, and automated commissions are outside this prototype.
 
@@ -57,6 +57,39 @@ The first launch creates a prototype session and securely stores its token. Late
 
 Admin uses the fixed prototype login: **username `admin`**, **password `OrbitAdmin123!`**. These credentials are hardcoded in the backend's `src/admin-auth.ts`. The mobile login form submits them to `POST /admin/auth/login`; verification happens on the server, which returns an eight-hour admin access token. The token is kept in memory, cleared when leaving the admin screen, and revoked by the Log out button. A rejected login never opens the admin records. Studios and instructors can be created/edited; affiliations can be created/removed. The backend validates every write.
 
+Internal playtest staff can optionally sign in without changing the anonymous onboarding flow. The shared fixed credentials are **username `staff`**, **password `OrbitStaff123!`**, verified by the backend at `POST /auth/login` against the current prototype session. Staff status is retained with that session; signing out returns it to guest mode. Staff credentials do not grant admin access. The admin account remains separate.
+
 Sample UI content: Core Collective, The Pilates Room, Form & Flow Studio, Mia Chen, Reformer Reset, Full Body Mat Flow, pink/blue crew grip socks (AUD 22.95), Espresso mat (AUD 109.00), and Starter Bundle (AUD 129.00). Apply `MIA10` from Studio connection for attribution; it is not a discount code. Demo discounts are `WELCOME15` and `SEASON10` in the bag. Checkout quotes and totals come from the server, and retries reuse an idempotency key.
 
 Run `npm test -- --runInBand`, `npx tsc --noEmit`, and `npm run lint` for frontend verification. The backend has its own HTTP tests, including an end-to-end journey using these exact UI records, under `../pilates-backend/test`.
+
+## Reference screen audit · 23 November 2026
+
+The supplied images contain repeated copies of the same layouts. The ten unique reference screen types now have reachable implementations:
+
+| Reference screen | Implementation and route |
+| --- | --- |
+| Discover | Discover tab: studio card, session, instructor recommendation, search, nearby/format/level filters; directory link retained |
+| Session | Session detail: instructor, studio, start-session demo, studio edit and related sessions |
+| Product tag / studio edit | Session → Shop this studio edit: tagged products, variants, add to bag, instructor attribution, map link, expandable workshop concept |
+| Instructor | Instructor profile: image, bio, affiliated studios, recommendations and sessions |
+| Shop | Shop tab: search, collection filters, editorial hero, product grid and bag access |
+| Product detail | Product image/gallery thumbnails, detail view, availability, variants, quantities and add to bag |
+| Shopping bag | Quantity/remove controls, applied demo discount, server-priced summary and checkout |
+| Checkout concept | Local-only example delivery fields, quote review and idempotent demo confirmation |
+| Order confirmation | Confirmation panel, order items/totals, studio attribution and return/shopping actions |
+| Premium membership concept | You or Move → Explore premium membership: membership panel, expandable trial FAQ and sessions link |
+
+The Move tab provides a session directory. Detail navigation returns to the originating screen, including studio edit → product → back. Existing onboarding, studio directory/profile, guest/staff access, referral and internal admin flows are retained.
+
+These are prototype implementations. Session playback remains simulated, membership pricing/trials are unconfirmed, the workshop/map graphic is illustrative, and checkout creates demo orders without payments or fulfillment. Actual videos, approved brand photography, real event dates/booking URLs, Shopify checkout and subscription billing still require production content/integrations. The release API endpoint in `src/api/config.ts` must also be configured before distribution.
+
+### Seeded image repair
+
+Legacy v1 seeds used `placehold.co` URLs whose default SVG responses cannot be decoded by native React Native Image. The previous v3 migration only covered UI-v2 records. Both fresh seed generations now use packaged backend JPG/PNG files; `orbit-media-v4` repairs old seed URLs even when v3 is already marked complete, retaining custom image URLs and publication state.
+
+`OrbitImage` supplies a visible fallback and tap-to-retry on loading errors. Relative media paths and localhost/Android-emulator media URLs use the active API host. Gallery images are optional `imageUrls` on products; when only one approved image exists, the detail control changes its framing instead of inventing extra photographs.
+
+Apply the repair on another database with `npm run seed` in `../pilates-backend`, then restart its API and reload the app. The configured development database was migrated successfully during this audit.
+
+Validation: frontend TypeScript, ESLint and 25 Jest tests; backend TypeScript/build and 34 integration tests, including all seeded image routes, v4 migration preservation, instructor-aware search and the new frontend journeys. Discovery image rendering was also inspected in the running iOS simulator. Android device rendering was not inspected in this session.

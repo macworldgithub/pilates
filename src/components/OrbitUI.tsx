@@ -1,5 +1,6 @@
+import { OrbitImage } from './OrbitImage';
 import React from 'react';
-import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen } from '../types';
 
 const C = {
@@ -13,14 +14,14 @@ const C = {
   sage: '#e9efea',
 };
 
-const Button = ({ label, onPress, secondary = false, small = false, disabled = false }: { label: string; onPress: () => void; secondary?: boolean; small?: boolean; disabled?: boolean }) => (
-  <Pressable disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={[{ opacity: disabled ? 0.45 : 1 }, styles.button, secondary && styles.buttonSecondary, small && styles.buttonSmall]}>
+const Button = ({ label, onPress, secondary = false, small = false, disabled = false, tone }: { label: string; onPress: () => void; secondary?: boolean; small?: boolean; disabled?: boolean; tone?: 'pink' }) => (
+  <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={[styles.button, disabled && styles.buttonDisabled, secondary && styles.buttonSecondary, tone === 'pink' && styles.buttonPink, small && styles.buttonSmall]}>
     <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText, small && styles.buttonTextSmall]}>{label}</Text>
   </Pressable>
 );
 
 const Chip = ({ label, active, onPress }: { label: string; active?: boolean; onPress?: () => void }) => (
-  <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+  <Pressable accessibilityRole="button" accessibilityState={{ selected: !!active }} onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
     <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
   </Pressable>
 );
@@ -34,7 +35,7 @@ const Heading = ({ eyebrow, title, subtitle }: { eyebrow?: string; title: string
 );
 
 const Photo = ({ uri, height = 190, radius = 18 }: { uri: ImageSourcePropType | undefined; height?: number; radius?: number }) => (
-  <Image source={uri} style={[styles.photo, { height, borderRadius: radius }]} resizeMode="cover" />
+  <OrbitImage source={uri} style={[styles.photo, { height, borderRadius: radius }]} resizeMode="cover" />
 );
 
 const SectionTitle = ({ title, action, onPress }: { title: string; action?: string; onPress?: () => void }) => (
@@ -46,7 +47,7 @@ const SectionTitle = ({ title, action, onPress }: { title: string; action?: stri
 
 const ProductCard = ({ title, price, uri, onPress }: { title: string; price: string; uri: ImageSourcePropType | undefined; onPress: () => void }) => (
   <Pressable onPress={onPress} style={styles.productCard}>
-    <Image source={uri} style={styles.productPhoto} />
+    <OrbitImage source={uri} style={styles.productPhoto} />
     <Text style={styles.cardTitle}>{title}</Text>
     <Text style={styles.meta}>{price}</Text>
   </Pressable>
@@ -54,11 +55,11 @@ const ProductCard = ({ title, price, uri, onPress }: { title: string; price: str
 
 const TopBar = ({ screen, onBack, onYou }: { screen: Screen; onBack: () => void; onYou: () => void }) => (
   <View style={styles.topBar}>
-    {screen !== 'discover' && screen !== 'studios' && screen !== 'shop' && screen !== 'you' ? (
-      <Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></Pressable>
-    ) : <View style={styles.brandMark}><Text style={styles.brandMarkText}>M</Text></View>}
-    <Text style={styles.brand}>Move<Text style={styles.brandLight}>Active</Text></Text>
-    <Pressable onPress={onYou} style={styles.avatar}><Text style={styles.avatarText}>A</Text></Pressable>
+    {!['discover', 'move', 'studios', 'shop', 'you'].includes(screen) ? (
+      <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></Pressable>
+    ) : <View style={styles.brandMark} />}
+    <Text style={[styles.brand, !['discover', 'move', 'studios', 'shop', 'you'].includes(screen) && styles.brandWithBack]}>Move<Text style={styles.brandLight}>Active</Text></Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={onYou} style={styles.avatar}><Text style={styles.avatarText}>A</Text></Pressable>
   </View>
 );
 
@@ -66,7 +67,7 @@ const BottomNav = ({ screen, bagCount, onSelect }: { screen: Screen; bagCount: n
   <View style={styles.bottomNav}>
     {([
       ['discover', '⌖', 'Discover'],
-      ['studios', '⌂', 'Studios'],
+      ['move', '◉', 'Move'],
       ['shop', '◇', 'Shop'],
       ['you', '○', 'You'],
     ] as [Screen, string, string][]).map(([id, icon, name]) => (
@@ -87,7 +88,9 @@ export const styles = StyleSheet.create({
   topBar: { height: 58, borderBottomWidth: 1, borderBottomColor: '#f2f0ee', paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.paper },
   brandMark: { width: 26 },
   brandMarkText: { color: C.coral, fontSize: 20, fontWeight: '700' },
-  brand: { position: 'absolute', left: 54, color: C.ink, fontSize: 20, letterSpacing: -1.1, fontWeight: '600' },
+  brand: { position: 'absolute', left: 20, color: C.ink, fontSize: 20, letterSpacing: -1.1, fontWeight: '600' },
+  brandWithBack: { left: 54 },
+  confirmationHero: { backgroundColor: '#f0f3ed', borderRadius: 12, padding: 24, alignItems: 'center', marginBottom: 14 },
   brandLight: { fontWeight: '300' },
   avatar: { height: 29, width: 29, borderRadius: 15, backgroundColor: '#e8f0f3', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#394b53', fontWeight: '600', fontSize: 12 },
@@ -96,8 +99,10 @@ export const styles = StyleSheet.create({
   navItem: { alignItems: 'center', minWidth: 60 }, navIcon: { fontSize: 20, color: '#8c8986', height: 25 }, navLabel: { fontSize: 10, color: '#8c8986', marginTop: 1 }, navActive: { color: C.ink, fontWeight: '700' },
   headingWrap: { marginTop: 7, marginBottom: 16 }, eyebrow: { fontSize: 9, fontWeight: '700', letterSpacing: 1.3, color: '#8d8883', marginBottom: 7 }, heading: { fontSize: 31, lineHeight: 36, letterSpacing: -1.4, fontWeight: '400', color: C.ink }, headingSmall: { fontSize: 25, fontWeight: '600', color: C.ink, letterSpacing: -0.7 }, subtitle: { fontSize: 13, lineHeight: 20, color: C.muted, marginTop: 7 },
   chipRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, marginBottom: 14 }, chip: { minHeight: 31, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: '#e8e4e1', justifyContent: 'center', backgroundColor: C.paper }, chipActive: { backgroundColor: C.ink, borderColor: C.ink }, chipText: { color: '#5d5955', fontSize: 10, fontWeight: '500' }, chipTextActive: { color: C.paper },
-  studioCard: { minHeight: 88, borderColor: '#f1d0cb', borderWidth: 1, borderRadius: 15, backgroundColor: C.paper, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 19 }, studioThumb: { width: 62, height: 62, borderRadius: 10, backgroundColor: C.sage }, titleInline: { flexDirection: 'row', alignItems: 'center' }, cardTitle: { color: C.ink, fontSize: 13, fontWeight: '600', lineHeight: 18 }, verified: { color: '#588174', fontSize: 9, fontWeight: '700' }, meta: { color: C.muted, fontSize: 10, lineHeight: 16 }, inlineLink: { color: C.ink, fontSize: 10, fontWeight: '600', marginTop: 5 }, chevron: { color: '#65615d', fontSize: 22, paddingHorizontal: 5 },
-  sectionTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11, marginTop: 7 }, sectionTitle: { fontSize: 17, fontWeight: '600', color: C.ink, letterSpacing: -0.3 }, link: { fontSize: 11, color: C.ink, fontWeight: '600' }, workoutCard: { borderWidth: 1, borderColor: C.line, borderRadius: 16, overflow: 'hidden', marginBottom: 14, backgroundColor: C.paper }, workoutPhoto: { height: 175, width: '100%', backgroundColor: C.sage }, workoutText: { padding: 12 }, play: { position: 'absolute', left: 13, bottom: 13, backgroundColor: 'rgba(255,255,255,0.94)', height: 31, width: 31, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, playIcon: { color: C.ink, fontSize: 11 }, duration: { position: 'absolute', right: 11, bottom: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(32,32,32,0.75)' }, durationText: { color: C.paper, fontSize: 9 }, recommendCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: '#fcf8f5', marginBottom: 18 }, recommendIcon: { height: 31, width: 31, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: C.coralPale }, recommendIconText: { color: C.coral, fontSize: 16 },
+  studioCard: { minHeight: 88, borderColor: C.line, borderWidth: 1, borderRadius: 15, backgroundColor: C.paper, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 19 }, studioThumb: { width: 62, height: 62, borderRadius: 10, backgroundColor: C.sage }, titleInline: { flexDirection: 'row', alignItems: 'center' }, cardTitle: { color: C.ink, fontSize: 13, fontWeight: '600', lineHeight: 18 }, verified: { color: '#588174', fontSize: 9, fontWeight: '700' }, meta: { color: C.muted, fontSize: 10, lineHeight: 16 }, inlineLink: { color: C.ink, fontSize: 10, fontWeight: '600', marginTop: 5 }, chevron: { color: '#65615d', fontSize: 22, paddingHorizontal: 5 },
+  sectionTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11, marginTop: 7 }, sectionTitle: { fontSize: 17, fontWeight: '600', color: C.ink, letterSpacing: -0.3 }, link: { fontSize: 11, color: C.ink, fontWeight: '600' }, workoutCard: { borderWidth: 1, borderColor: C.line, borderRadius: 16, overflow: 'hidden', marginBottom: 14, backgroundColor: C.paper }, workoutPhoto: { height: 175, width: '100%', backgroundColor: C.sage }, workoutText: { padding: 12 }, play: { position: 'absolute', left: 13, bottom: 13, backgroundColor: '#f0dfe8', height: 31, width: 31, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, playIcon: { color: C.ink, fontSize: 11 }, duration: { position: 'absolute', right: 11, bottom: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(32,32,32,0.75)' }, durationText: { color: C.paper, fontSize: 9 }, recommendCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: '#f0f3ed', marginBottom: 18, flexWrap: 'wrap' }, recommendIcon: { height: 31, width: 31, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: C.coralPale }, recommendIconText: { color: C.coral, fontSize: 16 },
+  buttonPink: { backgroundColor: '#efdae5', borderColor: '#efdae5' },
+  buttonDisabled: { opacity: 0.45 },
   button: { height: 50, backgroundColor: C.ink, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginTop: 15, marginBottom: 6 }, buttonSecondary: { backgroundColor: C.paper, borderWidth: 1, borderColor: '#d9d4d0' }, buttonSmall: { height: 34, paddingHorizontal: 14, borderRadius: 18, marginTop: 0, marginBottom: 0 }, buttonText: { color: C.paper, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }, buttonSecondaryText: { color: C.ink }, buttonTextSmall: { fontSize: 9 },
   searchBox: { height: 45, borderRadius: 13, borderWidth: 1, borderColor: C.line, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 12 }, searchIcon: { color: '#88837e', fontSize: 22, marginRight: 7 }, searchInput: { flex: 1, paddingVertical: 0, color: C.ink, fontSize: 11 }, resultCount: { color: '#96908b', fontSize: 9, fontWeight: '700', letterSpacing: 1, marginVertical: 7 }, directoryRow: { borderTopWidth: 1, borderColor: C.line, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, mapCard: { marginTop: 17, height: 135, borderRadius: 18, backgroundColor: '#edf1ed', justifyContent: 'center', alignItems: 'center' }, mapPin: { fontSize: 27, color: '#6c8373' }, mapTitle: { fontSize: 13, color: C.ink, fontWeight: '600', marginTop: 5 },
   profileTitle: { paddingTop: 17, paddingBottom: 5 }, bodyCopy: { color: '#625e5a', fontSize: 12, lineHeight: 19, marginVertical: 9 }, infoBox: { borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 15, marginVertical: 10 }, personRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#f1eeeb' }, personImage: { width: 49, height: 49, borderRadius: 25, backgroundColor: C.sage }, personImageSmall: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.sage },

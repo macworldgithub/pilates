@@ -24,6 +24,12 @@ export class OrbitApi {
     try { if (this.adminToken) { await this.request('/admin/auth/session', 'DELETE', undefined, 'admin'); } }
     finally { this.adminToken = ''; }
   }
+  staffLogin(username: string, password: string) {
+    return this.request<Session>('/auth/login', 'POST', { username, password }, 'session');
+  }
+  staffLogout() {
+    return this.request<Session>('/auth/logout', 'POST', undefined, 'session');
+  }
   config() { return this.request<AppConfig>('/config'); }
   async request<T>(path: string, method = 'GET', body?: unknown, access: 'public' | 'session' | 'admin' = 'public', extraHeaders: Record<string, string> = {}): Promise<T> {
     const controller = new AbortController();
