@@ -1,6 +1,5 @@
 import React from 'react';
 import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from 'react-native';
-import { instructors, photos, studios } from '../data/mockData';
 import { Screen } from '../types';
 
 const C = {
@@ -14,8 +13,8 @@ const C = {
   sage: '#e9efea',
 };
 
-const Button = ({ label, onPress, secondary = false, small = false }: { label: string; onPress: () => void; secondary?: boolean; small?: boolean }) => (
-  <Pressable onPress={onPress} style={[styles.button, secondary && styles.buttonSecondary, small && styles.buttonSmall]}>
+const Button = ({ label, onPress, secondary = false, small = false, disabled = false }: { label: string; onPress: () => void; secondary?: boolean; small?: boolean; disabled?: boolean }) => (
+  <Pressable disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={[{ opacity: disabled ? 0.45 : 1 }, styles.button, secondary && styles.buttonSecondary, small && styles.buttonSmall]}>
     <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText, small && styles.buttonTextSmall]}>{label}</Text>
   </Pressable>
 );
@@ -45,37 +44,11 @@ const SectionTitle = ({ title, action, onPress }: { title: string; action?: stri
   </View>
 );
 
-const StudioCard = ({ onPress }: { onPress: () => void }) => (
-  <Pressable onPress={onPress} style={styles.studioCard}>
-    <Image source={photos.studio} style={styles.studioThumb} />
-    <View style={styles.flex1}>
-      <View style={styles.titleInline}><Text style={styles.cardTitle}>{studios[0].name}</Text><Text style={styles.verified}> ✓</Text></View>
-      <Text style={styles.meta}>{studios[0].area} · {studios[0].distance} · Verified partner</Text>
-      <Text style={styles.inlineLink}>Open profile  ›</Text>
-    </View>
-    <Text style={styles.chevron}>›</Text>
-  </Pressable>
-);
-
-const WorkoutCard = ({ onPress }: { onPress: () => void }) => (
-  <Pressable onPress={onPress} style={styles.workoutCard}>
-    <View>
-      <Image source={photos.session} style={styles.workoutPhoto} />
-      <View style={styles.play}><Text style={styles.playIcon}>▶</Text></View>
-      <View style={styles.duration}><Text style={styles.durationText}>◷ 15 min</Text></View>
-    </View>
-    <View style={styles.workoutText}>
-      <Text style={styles.cardTitle}>15-minute Reformer Reset</Text>
-      <Text style={styles.meta}>With {instructors[0].name} · Beginner</Text>
-    </View>
-  </Pressable>
-);
-
 const ProductCard = ({ title, price, uri, onPress }: { title: string; price: string; uri: ImageSourcePropType | undefined; onPress: () => void }) => (
   <Pressable onPress={onPress} style={styles.productCard}>
     <Image source={uri} style={styles.productPhoto} />
     <Text style={styles.cardTitle}>{title}</Text>
-    <Text style={styles.meta}>{price} AUD</Text>
+    <Text style={styles.meta}>{price}</Text>
   </Pressable>
 );
 
@@ -140,4 +113,4 @@ export const styles = StyleSheet.create({
   toast: { position: 'absolute', left: 24, right: 24, bottom: 76, borderRadius: 13, backgroundColor: C.ink, paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center' }, toastText: { color: C.paper, fontSize: 11, fontWeight: '600' },
 });
 
-export { Button, Chip, Heading, Photo, SectionTitle, StudioCard, WorkoutCard, ProductCard, TopBar, BottomNav, C };
+export { Button, Chip, Heading, Photo, SectionTitle, ProductCard, TopBar, BottomNav, C };
