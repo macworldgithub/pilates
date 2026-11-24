@@ -88,11 +88,11 @@ function App() {
       setSession(restored);
       const settings = await api.config();
       setConfig(settings); setArea(settings.areas[0]);
-      if (restored.profile.latitude !== undefined && restored.profile.longitude !== undefined) {
+      if (restored.profile?.latitude !== undefined && restored.profile.longitude !== undefined) {
         setArea({ area: restored.profile.area ?? 'Selected area', latitude: restored.profile.latitude, longitude: restored.profile.longitude });
       }
-      if (restored.profile.formats?.[0]) { setFormat(restored.profile.formats[0]); }
-      setInterest(restored.profile.interests?.[0] ?? settings.interestOptions[0]?.value ?? '');
+      if (restored.profile?.formats?.[0]) { setFormat(restored.profile.formats[0]); }
+      setInterest(restored.profile?.interests?.[0] ?? settings.interestOptions[0]?.value ?? '');
       return restored;
     } catch (reason) { reportError(reason); }
     finally { setBooting(false); }
@@ -116,7 +116,10 @@ function App() {
 
   const reload = useCallback(async () => {
     const version = ++listVersion.current;
-    const location = session?.profile.latitude !== undefined ? { latitude: session.profile.latitude, longitude: session.profile.longitude! } : area;
+    const profile = session?.profile;
+    const location = profile?.latitude !== undefined && profile.longitude !== undefined
+      ? { latitude: profile.latitude, longitude: profile.longitude }
+      : area;
     if (!location) { return; }
     const geoQuery = nearMe ? { latitude: location.latitude, longitude: location.longitude, radiusKm: 10, sort: 'nearest' } : {};
     const [s, w, p, o, connections, bag, history] = await Promise.all([
@@ -133,7 +136,7 @@ function App() {
       if (o) { setOffers(o.data); } if (connections) { setReferrals(connections.data); }
       if (bag) { setCart(bag); } if (history) { setOrders(history.data); }
     }
-  }, [format, level, nearMe, search, collection, session?.profile.latitude, session?.profile.longitude, screen, area]);
+  }, [format, level, nearMe, search, collection, session?.profile?.latitude, session?.profile?.longitude, screen, area]);
   useEffect(() => {
     if (!sessionId || !access || !['discover', 'move', 'studios', 'shop', 'you', 'bag'].includes(screen)) { return; }
     const timer = setTimeout(() => {
@@ -149,9 +152,9 @@ function App() {
     if (screen === 'staffLogin' || screen === 'admin' || screen === 'onboarding') { return; }
     const previous = navigationHistory.current.pop();
     if (previous) { setScreen(previous); return; }
-    const destinations: Partial<Record<Screen, Screen>> = { studio: 'studios', instructor: studio ? 'studio' : 'discover', session: 'discover', product: 'shop', bag: 'shop', checkout: 'bag', order: 'you', productTag: 'session', membership: 'you', referral: 'you', admin: 'you', staffLogin: session?.profile.onboardingComplete ? 'you' : 'onboarding' };
+    const destinations: Partial<Record<Screen, Screen>> = { studio: 'studios', instructor: studio ? 'studio' : 'discover', session: 'discover', product: 'shop', bag: 'shop', checkout: 'bag', order: 'you', productTag: 'session', membership: 'you', referral: 'you', admin: 'you', staffLogin: session?.profile?.onboardingComplete ? 'you' : 'onboarding' };
     setScreen(screen === 'session' ? (tab === 'move' ? 'move' : 'discover') : destinations[screen] ?? tab);
-  }, [screen, studio, tab, session?.profile.onboardingComplete]);
+  }, [screen, studio, tab, session?.profile?.onboardingComplete]);
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
       if (['staffLogin', 'admin', 'onboarding', 'discover', 'move', 'studios', 'shop', 'you'].includes(screen)) { return false; }
@@ -232,7 +235,7 @@ function App() {
             await api.initialize();
             const signedIn = await api.staffLogin(staffUsername.trim(), staffPassword);
             setSession(signedIn); setAccess('staff'); setTab('discover');
-            setScreen(signedIn.profile.onboardingComplete ? 'discover' : 'onboarding');
+            setScreen(signedIn.profile?.onboardingComplete ? 'discover' : 'onboarding');
           }
           navigationHistory.current = []; setStaffPassword('');
         })} />
@@ -270,7 +273,7 @@ function App() {
       case 'studios': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>STUDIO DIRECTORY</Text><Heading title="Find your studio." subtitle="Discover local Pilates spaces and the people who move with them." />
         <TextInput accessibilityLabel="Search studios" value={search} onChangeText={setSearch} placeholder="Search studio name or area" style={styles.formInput} />
-        <View style={styles.chipRow}><Chip label={nearMe ? `${session?.profile.area ?? 'Melbourne'} · 10 km` : 'All areas'} active={nearMe} onPress={() => setNearMe(!nearMe)} />{(config?.formats ?? []).map(f => <Chip key={f} label={f} active={format === f} onPress={() => setFormat(f)} />)}</View>
+        <View style={styles.chipRow}><Chip label={nearMe ? `${session?.profile?.area ?? 'Melbourne'} · 10 km` : 'All areas'} active={nearMe} onPress={() => setNearMe(!nearMe)} />{(config?.formats ?? []).map(f => <Chip key={f} label={f} active={format === f} onPress={() => setFormat(f)} />)}</View>
         <Text style={styles.resultCount}>{studios.length} MATCHING STUDIOS</Text>{studios.map(s => <StudioCard key={s.id} studio={s} onPress={() => openStudio(s.id)} />)}{!studios.length && noResults('No studios match your search. Try another format or all areas.')}
       </ScrollView>;
       case 'studio': return studio && <ScrollView contentContainerStyle={styles.content}>
@@ -330,7 +333,7 @@ function App() {
       case 'checkout': return quote && <ScrollView contentContainerStyle={styles.content}><Text style={styles.eyebrow}>PROTOTYPE · NO PAYMENT</Text><Heading title="One step closer." />{fulfillment === 'delivery' && <DeliveryPreview />}{summary(quote)}<Text style={styles.bodyCopy}>{quote.notice}</Text><Text style={styles.meta}>{fulfillment === 'warehouse-collect' ? 'Collection is warehouse-based. No studio pickup.' : 'The production app would hand off to approved Shopify checkout. Shipping, billing and payments remain to be confirmed.'}</Text><Button label="Confirm demo order" disabled={busy} onPress={confirmOrder} /></ScrollView>;
       case 'order': return order && <ScrollView contentContainerStyle={styles.content}><View style={styles.confirmationHero}><View style={styles.orderCheck}><Text style={styles.orderCheckText}>✓</Text></View><Heading title="Thanks for moving with us." subtitle={`Demo order ${order.id} · No purchase was placed`} /></View><Text style={styles.bodyCopy}>Demo confirmed · No charge or fulfillment.</Text>{summary(order)}{!!order.attribution && <View style={styles.recommendCard}><Text style={styles.cardTitle}>✓ Your studio connection</Text><Text style={styles.meta}>{referrals.find(r => r.code === order.attribution?.code)?.owner.name ?? order.attribution.code} · Attribution concept</Text></View>}{order.items.map(item => <View key={`${item.productId}/${item.variantId}`} style={styles.simpleRow}><Text style={styles.cardTitle}>{item.productTitle} × {item.quantity}</Text><Text style={styles.meta}>{money(item.lineTotal, order.currency)}</Text></View>)}<Button label="Back to my Pilates world" onPress={() => goTab('discover')} /><Button secondary label="Keep shopping" onPress={() => goTab('shop')} /></ScrollView>;
       case 'you': return <ScrollView contentContainerStyle={styles.content}>
-        <Heading title="Your Pilates world." subtitle="Your practice, your pace." /><View style={styles.profileCard}><View style={styles.largeAvatar}><Text style={styles.largeAvatarText}>M</Text></View><View style={styles.flex1}><Text style={styles.cardTitle}>{session?.accountType === 'staff' ? 'Internal staff account' : 'Your demo profile'}</Text><Text style={styles.meta}>{session?.profile.area} · {session?.profile.formats?.join(', ')} · {session?.profile.interests?.join(', ')}</Text></View></View>
+        <Heading title="Your Pilates world." subtitle="Your practice, your pace." /><View style={styles.profileCard}><View style={styles.largeAvatar}><Text style={styles.largeAvatarText}>M</Text></View><View style={styles.flex1}><Text style={styles.cardTitle}>{session?.accountType === 'staff' ? 'Internal staff account' : 'Your demo profile'}</Text><Text style={styles.meta}>{session?.profile?.area} · {session?.profile?.formats?.join(', ')} · {session?.profile?.interests?.join(', ')}</Text></View></View>
         <SectionTitle title="Internal access" />
         <Button secondary label={access === 'admin' ? 'Sign out of admin account' : 'Sign out of staff account'} disabled={busy} onPress={signOut} />
         <Button secondary label="Explore premium membership" onPress={() => navigate('membership')} />
@@ -351,7 +354,7 @@ function App() {
       case 'admin': return access === 'admin' && <AdminPanel key={adminVersion} task={task} busy={busy} onError={reportError} onChanged={async () => { invalidateLists(); }} onLogout={signOut} onPreview={() => task(async () => {
         const current = session && config ? session : await bootstrap();
         if (!current) { return; }
-        navigationHistory.current = []; setTab('discover'); setScreen(current.profile.onboardingComplete ? 'discover' : 'onboarding');
+        navigationHistory.current = []; setTab('discover'); setScreen(current.profile?.onboardingComplete ? 'discover' : 'onboarding');
       })} />;
       default: return null;
     }
