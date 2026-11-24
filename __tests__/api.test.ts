@@ -88,3 +88,14 @@ test('admin login exchanges fixed credentials for a backend token and logout rev
   await client.adminLogout();
   expect(fetchMock).toHaveBeenLastCalledWith('http://test/admin/auth/session', expect.objectContaining({ method: 'DELETE', headers: expect.objectContaining({ Authorization: 'Bearer server-issued' }) }));
 });
+
+test('reuses the in-memory session if native secure storage is unavailable', async () => {
+  (Keychain.getGenericPassword as jest.Mock).mockRejectedValue(new Error('Native module unavailable'));
+  (Keychain.setGenericPassword as jest.Mock).mockRejectedValue(new Error('Native module unavailable'));
+  fetchMock.mockResolvedValueOnce(response({ id: 'memory', token: 'memory-token', profile: {} }))
+    .mockResolvedValueOnce(response({ id: 'memory', profile: {} }));
+  const client = new OrbitApi('http://test');
+  await client.initialize(); await client.initialize();
+  expect(fetchMock.mock.calls.map(call => call[1].method)).toEqual(['POST', 'GET']);
+  expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer memory-token');
+});

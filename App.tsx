@@ -1,7 +1,7 @@
 import { DeliveryPreview, MembershipScreen, ProductGallery, ProductTagScreen } from './src/components/ReferenceScreens';
 import { OrbitImage } from './src/components/OrbitImage';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StatusBar, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Linking, Pressable, ScrollView, StatusBar, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { api, ApiError, money } from './src/api/client';
 import type { AppConfig, Area, Cart, CartItem, CheckoutInput, Format, Instructor, Offer, Order, Product, Quote, Referral, Session, Studio, Workout } from './src/api/types';
@@ -14,7 +14,7 @@ import type { Screen } from './src/types';
 const emptyCart: Cart = { items: [], subtotal: 0, currency: null, checkoutReady: false, revision: 0 };
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('onboarding');
+  const [screen, setScreen] = useState<Screen>('staffLogin');
   const [tab, setTab] = useState<Screen>('discover');
   const [session, setSession] = useState<Session>();
   const [format, setFormat] = useState<Format>('reformer');
@@ -33,6 +33,9 @@ function App() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [access, setAccess] = useState<'staff' | 'admin'>();
+  const [loginRole, setLoginRole] = useState<'staff' | 'admin'>('staff');
+  const [adminVersion, setAdminVersion] = useState(0);
   const [studio, setStudio] = useState<Studio>();
   const [instructor, setInstructor] = useState<Instructor>();
   const [workout, setWorkout] = useState<Workout>();
@@ -57,7 +60,7 @@ function App() {
   const checkoutBody = useRef<CheckoutInput | undefined>(undefined);
   const listVersion = useRef(0);
   const navigationHistory = useRef<Screen[]>([]);
-  const busy = booting || pending > 0;
+  const busy = pending > 0 || (booting && screen !== 'staffLogin' && screen !== 'admin');
   const sessionId = session?.id;
   const invalidateLists = useCallback(() => { listVersion.current++; }, []);
   const bagCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -65,7 +68,9 @@ function App() {
   const reportError = useCallback((reason: unknown) => {
     setError(reason instanceof Error ? reason.message : 'Something went wrong. Please retry.');
     if (reason instanceof ApiError && reason.status === 401) {
-      setNotice('Your session or admin access expired. Retry connecting.');
+      if (reason.access === 'admin') { api.clearAdminToken(); }
+      setAccess(undefined); setScreen('staffLogin'); navigationHistory.current = [];
+      setNotice('Sign in again; retry the connection if needed.');
     }
   }, []);
   const task = useCallback((work: () => Promise<void>) => {
@@ -78,51 +83,88 @@ function App() {
     setBooting(true); setError('');
     try {
       const restored = await api.initialize();
-      const [bag, history, groups, settings, connections] = await Promise.all([api.cart(), api.orders(), api.collections(), api.config(), api.referrals()]);
-      setConfig(settings); setReferrals(connections.data); setArea(settings.areas[0]);
-      setSession(restored); setCart(bag); setOrders(history.data); setCollections(groups.data);
+      // A consumer session is independent of catalog, referrals and order lists.
+      // Store it immediately so a failed optional request cannot block staff login.
+      setSession(restored);
+      const settings = await api.config();
+      setConfig(settings); setArea(settings.areas[0]);
       if (restored.profile.latitude !== undefined && restored.profile.longitude !== undefined) {
         setArea({ area: restored.profile.area ?? 'Selected area', latitude: restored.profile.latitude, longitude: restored.profile.longitude });
       }
       if (restored.profile.formats?.[0]) { setFormat(restored.profile.formats[0]); }
       setInterest(restored.profile.interests?.[0] ?? settings.interestOptions[0]?.value ?? '');
-      if (restored.profile.onboardingComplete) { setScreen('discover'); setTab('discover'); }
+      return restored;
     } catch (reason) { reportError(reason); }
     finally { setBooting(false); }
   }, [reportError]);
   useEffect(() => { bootstrap(); }, [bootstrap]);
+
+  const loadSupport = useCallback(async () => {
+    const [bag, groups, connections] = await Promise.allSettled([api.cart(), api.collections(), api.referrals()]);
+    if (bag.status === 'fulfilled') { setCart(bag.value); }
+    if (groups.status === 'fulfilled') { setCollections(groups.value.data); }
+    if (connections.status === 'fulfilled') { setReferrals(connections.value.data); }
+    const failed = [bag, groups, connections].find(result => result.status === 'rejected');
+    if (failed?.status === 'rejected') { throw failed.reason; }
+  }, []);
+  const consumerActive = !!access && !['staffLogin', 'admin'].includes(screen);
+  useEffect(() => {
+    if (!consumerActive || !sessionId) { return; }
+    setPending(n => n + 1);
+    loadSupport().catch(reportError).finally(() => setPending(n => n - 1));
+  }, [consumerActive, sessionId, loadSupport, reportError]);
 
   const reload = useCallback(async () => {
     const version = ++listVersion.current;
     const location = session?.profile.latitude !== undefined ? { latitude: session.profile.latitude, longitude: session.profile.longitude! } : area;
     if (!location) { return; }
     const geoQuery = nearMe ? { latitude: location.latitude, longitude: location.longitude, radiusKm: 10, sort: 'nearest' } : {};
-    const [s, w, p, o, connections] = await Promise.all([
-      api.studios({ limit: 100, format, ...geoQuery, search: screen === 'studios' || screen === 'discover' ? search : undefined }),
-      api.workouts({ limit: 100, format, level, search: screen === 'discover' || screen === 'move' ? search : undefined }),
-      api.products({ limit: 100, collection, search: screen === 'shop' ? search : undefined }),
-      api.offers(nearMe ? { latitude: location.latitude, longitude: location.longitude } : {}),
-      api.referrals(),
+    const [s, w, p, o, connections, bag, history] = await Promise.all([
+      ['discover', 'studios'].includes(screen) ? api.studios({ limit: 100, format, ...geoQuery, search }) : null,
+      ['discover', 'move'].includes(screen) ? api.workouts({ limit: 100, format, level, search }) : null,
+      screen === 'shop' ? api.products({ limit: 100, collection, search }) : null,
+      screen === 'discover' ? api.offers(nearMe ? { latitude: location.latitude, longitude: location.longitude } : {}) : null,
+      screen === 'you' ? api.referrals() : null,
+      screen === 'bag' ? api.cart() : null,
+      screen === 'you' ? api.orders() : null,
     ]);
-    if (version === listVersion.current) { setStudios(s.data); setWorkouts(w.data); setProducts(p.data); setOffers(o.data); setReferrals(connections.data); }
+    if (version === listVersion.current) {
+      if (s) { setStudios(s.data); } if (w) { setWorkouts(w.data); } if (p) { setProducts(p.data); }
+      if (o) { setOffers(o.data); } if (connections) { setReferrals(connections.data); }
+      if (bag) { setCart(bag); } if (history) { setOrders(history.data); }
+    }
   }, [format, level, nearMe, search, collection, session?.profile.latitude, session?.profile.longitude, screen, area]);
   useEffect(() => {
-    if (!sessionId) { return; }
+    if (!sessionId || !access || !['discover', 'move', 'studios', 'shop', 'you', 'bag'].includes(screen)) { return; }
     const timer = setTimeout(() => {
       setPending(n => n + 1);
       reload().catch(reportError).finally(() => setPending(n => n - 1));
     }, 250);
     return () => { clearTimeout(timer); invalidateLists(); };
-  }, [sessionId, reload, reportError, invalidateLists]);
+  }, [sessionId, access, screen, reload, reportError, invalidateLists]);
 
   const navigate = (next: Screen) => { navigationHistory.current.push(screen); setScreen(next); };
   const goTab = (next: Screen) => { navigationHistory.current = []; setTab(next); setScreen(next); setSearch(''); setNotice(''); setFiltersOpen(false); };
-  const back = () => {
+  const back = useCallback(() => {
+    if (screen === 'staffLogin' || screen === 'admin' || screen === 'onboarding') { return; }
     const previous = navigationHistory.current.pop();
     if (previous) { setScreen(previous); return; }
     const destinations: Partial<Record<Screen, Screen>> = { studio: 'studios', instructor: studio ? 'studio' : 'discover', session: 'discover', product: 'shop', bag: 'shop', checkout: 'bag', order: 'you', productTag: 'session', membership: 'you', referral: 'you', admin: 'you', staffLogin: session?.profile.onboardingComplete ? 'you' : 'onboarding' };
     setScreen(screen === 'session' ? (tab === 'move' ? 'move' : 'discover') : destinations[screen] ?? tab);
-  };
+  }, [screen, studio, tab, session?.profile.onboardingComplete]);
+  useEffect(() => {
+    const listener = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (['staffLogin', 'admin', 'onboarding', 'discover', 'move', 'studios', 'shop', 'you'].includes(screen)) { return false; }
+      back(); return true;
+    });
+    return () => listener.remove();
+  }, [back, screen]);
+  const signOut = () => task(async () => {
+    if (access === 'admin') { await api.adminLogout(); }
+    else { setSession(await api.staffLogout()); }
+    setAccess(undefined); setStaffPassword(''); setError(''); setNotice('');
+    navigationHistory.current = []; invalidateLists(); setScreen('staffLogin');
+  });
   const openStudio = (id: string) => task(async () => { const next = await api.studio(id); setStudio(next); navigate('studio'); api.event('studio_opened', id); });
   const openInstructor = (id: string) => task(async () => { setInstructor(await api.instructor(id)); navigate('instructor'); });
   const openWorkout = (id: string) => task(async () => { setWorkout(await api.workout(id)); navigate('session'); api.event('workout_opened', id); });
@@ -130,6 +172,7 @@ function App() {
     const next = await api.product(id); setProduct(next); setVariantId(next.variants.find(v => v.available)?.id ?? next.variants[0]?.id ?? ''); setQuantity(1); navigate('product'); api.event('product_opened', id);
   });
   const openReferral = (code: string) => task(async () => { setReferral(await api.referral(code)); navigate('referral'); api.event('referral_opened', code); });
+  const openOrder = (id: string) => task(async () => { setOrder(await api.order(id)); navigate('order'); });
   const openWebsite = (url: string, id: string) => task(async () => { await Linking.openURL(url); api.event('booking_link_opened', id); });
   const invalidateCheckout = () => { setDiscountApplied(false); checkoutKey.current = undefined; checkoutBody.current = undefined; setQuote(undefined); };
   const changeCart = (item: CartItem, next: number) => task(async () => {
@@ -175,19 +218,25 @@ function App() {
 
   const renderScreen = () => {
     switch (screen) {
-      case 'staffLogin': return <ScrollView contentContainerStyle={styles.content}>
+      case 'staffLogin': return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>MOVEACTIVE · INTERNAL PLAYTEST</Text>
-        <Heading title="Staff sign in" subtitle="Use the shared staff account to access the prototype." />
-        <View style={styles.infoBox}><Text style={styles.cardTitle}>Shared demo credentials</Text><Text style={styles.meta}>Username: staff</Text><Text style={styles.meta}>Password: OrbitStaff123!</Text></View>
-        <TextInput accessibilityLabel="Staff username" value={staffUsername} onChangeText={setStaffUsername} autoCapitalize="none" autoCorrect={false} placeholder="Username" style={styles.formInput} />
-        <TextInput accessibilityLabel="Staff password" value={staffPassword} onChangeText={setStaffPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Password" style={styles.formInput} />
-        <Button label="Sign in as staff" disabled={busy || !staffUsername.trim() || !staffPassword} onPress={() => task(async () => {
-          const signedIn = await api.staffLogin(staffUsername.trim(), staffPassword);
-          setSession(signedIn); setStaffPassword('');
-          if (signedIn.profile.onboardingComplete) { setScreen('discover'); setTab('discover'); }
-          else { setScreen('onboarding'); }
+        <Heading title="Welcome to Project Orbit" subtitle="Sign in as staff to explore, or as admin to manage studios and instructors." />
+        <View style={styles.chipRow}>{(['staff', 'admin'] as const).map(role => <Chip key={role} label={role === 'staff' ? 'Staff' : 'Admin'} active={loginRole === role} onPress={() => { setLoginRole(role); setStaffUsername(role); setStaffPassword(''); setError(''); }} />)}</View>
+        <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff username' : 'Admin username'} value={staffUsername} onChangeText={setStaffUsername} autoCapitalize="none" autoCorrect={false} placeholder="Username" style={styles.formInput} />
+        <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff password' : 'Admin password'} value={staffPassword} onChangeText={setStaffPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Password" style={styles.formInput} />
+        <Button label={loginRole === 'staff' ? 'Sign in as staff' : 'Log in'} disabled={pending > 0 || !staffUsername.trim() || !staffPassword} onPress={() => task(async () => {
+          if (loginRole === 'admin') {
+            await api.adminLogin(staffUsername.trim(), staffPassword); setAccess('admin'); setScreen('admin');
+          } else {
+            // Initialize on demand as well: connection failure at launch is retryable.
+            await api.initialize();
+            const signedIn = await api.staffLogin(staffUsername.trim(), staffPassword);
+            setSession(signedIn); setAccess('staff'); setTab('discover');
+            setScreen(signedIn.profile.onboardingComplete ? 'discover' : 'onboarding');
+          }
+          navigationHistory.current = []; setStaffPassword('');
         })} />
-        <Button secondary label="Continue as guest" disabled={busy} onPress={() => setScreen('onboarding')} />
+        <Text style={styles.finePrint}>Internal simulated prototype. Product availability, checkout and referral attribution use sample data.</Text>
       </ScrollView>;
       case 'onboarding': return <ScrollView contentContainerStyle={styles.content}>
         <OrbitImage source={artwork({ imageUrl: config?.heroImageUrl })} style={styles.onboardHero} imageStyle={styles.onboardImage}><View style={styles.onboardShade} /><View style={styles.onboardCopy}><Text style={styles.onboardEyebrow}>YOUR PILATES WORLD</Text><Text style={styles.onboardTitle}>Find your next move.</Text><Text style={styles.onboardSub}>Fresh sessions. Studios you’ll love. Made for the way you move.</Text></View></OrbitImage>
@@ -195,7 +244,7 @@ function App() {
           <Text style={[styles.label, styles.interestLabel]}>WHAT DO YOU LOVE?</Text><View style={styles.chipRow}>{(config?.interestOptions ?? []).map(i => <Chip key={i.value} label={i.label} active={interest === i.value} onPress={() => setInterest(i.value)} />)}</View>
           <View style={styles.chipRow}>{(config?.formats ?? []).map(f => <Chip key={f} label={f === 'mat' ? 'Mat Pilates' : 'Reformer'} active={format === f} onPress={() => setFormat(f)} />)}</View>
           <Button label="Build my Pilates world →" disabled={busy || !session || !area || !interest} onPress={() => task(async () => { setSession(await api.profile({ ...area, interests: [interest], formats: [format], onboardingComplete: true })); setScreen('discover'); setTab('discover'); })} />
-          <Button secondary label="Internal staff sign in" disabled={busy || !session} onPress={() => setScreen('staffLogin')} />
+          <Button secondary label="Sign out" disabled={busy} onPress={signOut} />
         </View>
       </ScrollView>;
       case 'discover': return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
@@ -271,6 +320,7 @@ function App() {
       case 'bag': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>YOUR STUDIO ESSENTIALS</Text><Heading title="Your bag" subtitle="A little something for your next session." />
         {cart.items.map(item => <View key={`${item.productId}/${item.variantId}`} style={styles.cartItem}><OrbitImage source={artwork({ id: item.productId, imageUrl: item.imageUrl })} style={styles.cartPhoto} /><View style={styles.flex1}><Text style={styles.cardTitle}>{item.productTitle}</Text><Text style={styles.meta}>{item.variantTitle}{item.available ? '' : ' · Unavailable'}</Text><View style={styles.stepper}><Pressable disabled={busy} onPress={() => changeCart(item, item.quantity - 1)}><Text style={styles.stepperText}>−</Text></Pressable><Text style={styles.qty}>{item.quantity}</Text><Pressable disabled={busy || item.quantity === 99 || !item.available} onPress={() => changeCart(item, item.quantity + 1)}><Text style={styles.stepperText}>＋</Text></Pressable></View><Pressable disabled={busy} onPress={() => changeCart(item, 0)}><Text style={styles.inlineLink}>Remove</Text></Pressable></View><Text style={styles.meta}>{money(item.lineTotal, item.currency ?? 'AUD')}</Text></View>)}
+        {!!cart.items.length && <Button secondary label="Clear bag" disabled={busy} onPress={() => task(async () => { setCart(await api.clearCart()); invalidateCheckout(); })} />}
         {!cart.items.length && noResults('Your bag is taking a breather. Explore studio essentials picked for your practice.')}
         <View style={styles.codeBox}><Text style={styles.cardTitle}>Have a demo discount?</Text><TextInput accessibilityLabel="Discount code" value={discountCode} onChangeText={value => { setDiscountCode(value); invalidateCheckout(); }} autoCapitalize="characters" placeholder="WELCOME15 or SEASON10" style={styles.codeInput} /><Button small secondary label="Apply code" disabled={busy || !cart.checkoutReady || !discountCode.trim()} onPress={applyDiscount} /><Text style={styles.finePrint}>Referral codes are applied from Studio connection. They do not provide a discount.</Text></View>
         <Text style={styles.label}>FULFILLMENT</Text><View style={styles.chipRow}>{(['delivery', 'warehouse-collect'] as const).map(f => <Chip key={f} label={f === 'delivery' ? 'Delivery' : 'Warehouse collection'} active={fulfillment === f} onPress={() => { setFulfillment(f); invalidateCheckout(); }} />)}</View>
@@ -281,17 +331,15 @@ function App() {
       case 'order': return order && <ScrollView contentContainerStyle={styles.content}><View style={styles.confirmationHero}><View style={styles.orderCheck}><Text style={styles.orderCheckText}>✓</Text></View><Heading title="Thanks for moving with us." subtitle={`Demo order ${order.id} · No purchase was placed`} /></View><Text style={styles.bodyCopy}>Demo confirmed · No charge or fulfillment.</Text>{summary(order)}{!!order.attribution && <View style={styles.recommendCard}><Text style={styles.cardTitle}>✓ Your studio connection</Text><Text style={styles.meta}>{referrals.find(r => r.code === order.attribution?.code)?.owner.name ?? order.attribution.code} · Attribution concept</Text></View>}{order.items.map(item => <View key={`${item.productId}/${item.variantId}`} style={styles.simpleRow}><Text style={styles.cardTitle}>{item.productTitle} × {item.quantity}</Text><Text style={styles.meta}>{money(item.lineTotal, order.currency)}</Text></View>)}<Button label="Back to my Pilates world" onPress={() => goTab('discover')} /><Button secondary label="Keep shopping" onPress={() => goTab('shop')} /></ScrollView>;
       case 'you': return <ScrollView contentContainerStyle={styles.content}>
         <Heading title="Your Pilates world." subtitle="Your practice, your pace." /><View style={styles.profileCard}><View style={styles.largeAvatar}><Text style={styles.largeAvatarText}>M</Text></View><View style={styles.flex1}><Text style={styles.cardTitle}>{session?.accountType === 'staff' ? 'Internal staff account' : 'Your demo profile'}</Text><Text style={styles.meta}>{session?.profile.area} · {session?.profile.formats?.join(', ')} · {session?.profile.interests?.join(', ')}</Text></View></View>
-        <SectionTitle title="Internal staff access" />
-        {session?.accountType === 'staff'
-          ? <Button secondary label="Sign out of staff account" disabled={busy} onPress={() => task(async () => { setSession(await api.staffLogout()); setNotice('Signed out of the staff account.'); })} />
-          : <Button secondary label="Staff sign in" disabled={busy} onPress={() => setScreen('staffLogin')} />}
+        <SectionTitle title="Internal access" />
+        <Button secondary label={access === 'admin' ? 'Sign out of admin account' : 'Sign out of staff account'} disabled={busy} onPress={signOut} />
         <Button secondary label="Explore premium membership" onPress={() => navigate('membership')} />
         <Button secondary label="Update my interests" onPress={() => setScreen('onboarding')} />
         {!!primaryWorkout && <Button secondary label="Explore sessions" onPress={() => openWorkout(primaryWorkout.id)} />}
         {!!primaryStudio && <Button secondary label="Your local studio" onPress={() => openStudio(primaryStudio.id)} />}
         <SectionTitle title="Studio connections" />{referrals.map(r => <Button key={r.code} secondary label={`${r.owner.name} · ${r.code}`} onPress={() => openReferral(r.code)} />)}{!referrals.length && <Text style={styles.meta}>No studio connections available.</Text>}
-        <SectionTitle title="Your demo orders" />{orders.map(o => <Pressable key={o.id} style={styles.simpleRow} onPress={() => { setOrder(o); setScreen('order'); }}><Text style={styles.cardTitle}>{o.id}</Text><Text style={styles.meta}>{money(o.total, o.currency)} · {o.status}</Text></Pressable>)}{!orders.length && <Text style={styles.meta}>No demo orders yet.</Text>}
-        <SectionTitle title="Prototype tools" /><Button secondary label="MoveActive admin" onPress={() => setScreen('admin')} />
+        <SectionTitle title="Your demo orders" />{orders.map(o => <Pressable key={o.id} accessibilityRole="button" accessibilityLabel={`View demo order ${o.id}`} style={styles.simpleRow} onPress={() => openOrder(o.id)}><Text style={styles.cardTitle}>{o.id}</Text><Text style={styles.meta}>{money(o.total, o.currency)} · {o.status}</Text></Pressable>)}{!orders.length && <Text style={styles.meta}>No demo orders yet.</Text>}
+        <SectionTitle title="Prototype tools" />{access === 'admin' && <Button secondary label="MoveActive admin" onPress={() => setScreen('admin')} />}
       </ScrollView>;
       case 'referral': return referral && <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>STUDIO CONNECTION</Text><Heading title="Good moves travel." subtitle="Studio and instructor recommendations for your practice." />
@@ -300,15 +348,23 @@ function App() {
         <Text style={styles.finePrint}>Demo attribution only. No commissions or payouts.</Text><Button label="Apply studio connection" disabled={busy} onPress={() => task(async () => { await api.applyReferral(referral.code); setSession(old => old ? { ...old, referralCode: referral.code } : old); invalidateCheckout(); setNotice('Studio connection applied to your next demo order.'); })} />
         <Button secondary label={`View ${referral.owner.name}`} onPress={() => referral.ownerType === 'studio' ? openStudio(referral.ownerId) : openInstructor(referral.ownerId)} />
       </ScrollView>;
-      case 'admin': return <AdminPanel task={task} busy={busy} onChanged={reload} />;
+      case 'admin': return access === 'admin' && <AdminPanel key={adminVersion} task={task} busy={busy} onError={reportError} onChanged={async () => { invalidateLists(); }} onLogout={signOut} onPreview={() => task(async () => {
+        const current = session && config ? session : await bootstrap();
+        if (!current) { return; }
+        navigationHistory.current = []; setTab('discover'); setScreen(current.profile.onboardingComplete ? 'discover' : 'onboarding');
+      })} />;
       default: return null;
     }
   };
   return <SafeAreaProvider><SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
-    <StatusBar barStyle="dark-content" />{screen !== 'onboarding' && <TopBar screen={screen} onBack={back} onYou={() => goTab('you')} />}
+    <StatusBar barStyle="dark-content" />{!['onboarding', 'staffLogin', 'admin'].includes(screen) && <TopBar screen={screen} onBack={back} onYou={() => goTab('you')} />}
     {busy && <View accessibilityRole="progressbar" style={styles.chipRow}><ActivityIndicator /><Text style={styles.meta}>Connecting to your Pilates world…</Text></View>}
-    {!!error && <View accessibilityRole="alert" style={styles.noteCard}><Text style={styles.noteTitle}>{error}</Text><Button small secondary label={session ? 'Refresh' : 'Retry connection'} onPress={() => { if (!session || error.includes('expired')) { bootstrap(); } else { task(reload); } }} /></View>}
-    <View key={screen} style={styles.screen}>{renderScreen()}</View>
+    {!!error && <View accessibilityRole="alert" style={styles.noteCard}><Text style={styles.noteTitle}>{error}</Text><Button small secondary label={!session || screen === 'staffLogin' ? 'Retry connection' : 'Refresh'} onPress={() => {
+      if (screen === 'admin') { setError(''); setAdminVersion(n => n + 1); }
+      else if (!session || screen === 'staffLogin' || error.includes('expired')) { bootstrap(); }
+      else { task(async () => { if (!config) { await bootstrap(); } await Promise.all([reload(), loadSupport()]); }); }
+    }} /></View>}
+    <View key={screen} style={styles.screen}>{access || screen === 'staffLogin' ? renderScreen() : null}</View>
     {['discover', 'move', 'studios', 'shop', 'you'].includes(screen) && <BottomNav screen={tab === 'studios' ? 'discover' : tab} bagCount={bagCount} onSelect={goTab} />}
     {!!notice && <Pressable style={styles.toast} onPress={() => setNotice('')}><Text style={styles.toastText}>{notice} ×</Text></Pressable>}
   </SafeAreaView></SafeAreaProvider>;

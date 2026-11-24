@@ -2,14 +2,14 @@ import React from 'react';
 import ReactTestRenderer, { act } from 'react-test-renderer';
 import { TextInput } from 'react-native';
 import App from '../App';
-import { api } from '../src/api/client';
+import { api, ApiError } from '../src/api/client';
 import type { Profile } from '../src/api/types';
-import { BottomNav, Button } from '../src/components/OrbitUI';
+import { BottomNav, Button, Chip } from '../src/components/OrbitUI';
 import { ProductCard } from '../src/components/OrbitUI';
 import { StudioCard } from '../src/components/OrbitCards';
 
 const profile: Profile = { area: 'Melbourne, VIC', latitude: -37.84, longitude: 144.98, formats: ['reformer'], interests: ['strength'], onboardingComplete: true };
-const studio = { id: 'core-collective', name: 'Core Collective', address: '12 Greville Street, Prahran VIC', formats: ['reformer', 'mat'], description: 'Studio description', partnerType: 'partner', websiteUrl: 'https://example.com', bookingUrl: 'https://example.com/book', instructors: [], workouts: [], referrals: [] };
+const studio = { imageUrl: '/media/images/studios/core-collective.jpg', country: 'AU', city: 'Melbourne', latitude: -37.84, longitude: 144.98, published: true, id: 'core-collective', name: 'Core Collective', address: '12 Greville Street, Prahran VIC', formats: ['reformer', 'mat'], description: 'Studio description', partnerType: 'partner', websiteUrl: 'https://example.com', bookingUrl: 'https://example.com/book', instructors: [], workouts: [], referrals: [] };
 const product = { id: 'grip-socks-pink', title: 'Crew Grip Socks · Sweetie Candy Pink', description: 'Pink grip socks', collection: 'grip-socks', currency: 'AUD', variants: [{ id: 'pink-m', title: 'M / Candy Pink', price: 2295, available: true }], bundleProductIds: [] };
 const cartItem = { productId: product.id, variantId: 'pink-m', quantity: 1, productTitle: product.title, variantTitle: 'M / Candy Pink', currency: 'AUD', unitPrice: 2295, lineTotal: 2295, available: true };
 const cart = { items: [cartItem], subtotal: 2295, currency: 'AUD', revision: 1, checkoutReady: true };
@@ -48,7 +48,16 @@ async function step(fn: () => void) {
   await act(async () => { fn(); });
   await act(async () => { jest.advanceTimersByTime(300); });
 }
-async function render() { await step(() => { tree = ReactTestRenderer.create(<App />); }); }
+async function render(signIn = true) {
+  await step(() => { tree = ReactTestRenderer.create(<App />); });
+  if (signIn) {
+    await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Staff password')!.props.onChangeText('OrbitStaff123!'));
+    await step(() => button('Sign in as staff').props.onPress());
+  }
+}
+async function chooseAdmin() {
+  await step(() => tree.root.findAllByType(Chip).find(n => n.props.label === 'Admin')!.props.onPress());
+}
 function button(label: string) { return tree.root.findAllByType(Button).find(node => node.props.label === label)!; }
 
 test('restores a session and opens the specific API-backed studio selected by the user', async () => {
@@ -60,6 +69,7 @@ test('restores a session and opens the specific API-backed studio selected by th
 }, 15000); // The first native render loads React Native's lazy test components.
 test('onboarding persists the selected interests and format before entering discovery', async () => {
   (api.initialize as jest.Mock).mockResolvedValue({ id: 'session', profile: {} });
+  (api.staffLogin as jest.Mock).mockResolvedValue({ id: 'session', profile: {}, accountType: 'staff' });
   jest.spyOn(api, 'profile').mockResolvedValue({ id: 'session', profile } as any);
   await render();
   await step(() => button('Build my Pilates world →').props.onPress());
@@ -108,16 +118,17 @@ test('a failed checkout stays on review and reuses the idempotency key on retry'
 });
 test('an offline boot shows an actionable error and does not pretend data was loaded', async () => {
   (api.initialize as jest.Mock).mockRejectedValue(new Error('Cannot reach Project Orbit'));
-  await render();
+  await render(false);
   expect(JSON.stringify(tree.toJSON())).toContain('Cannot reach Project Orbit');
-  expect(button('Build my Pilates world →').props.disabled).toBe(true);
+  expect(button('Sign in as staff').props.disabled).toBe(true);
+  expect(tree.root.findAllByType(StudioCard)).toHaveLength(0);
+  expect(tree.root.findAllByType(BottomNav)).toHaveLength(0);
   expect(button('Retry connection')).toBeDefined();
 });
 test('admin logs in with username/password through the backend before loading protected data', async () => {
   jest.spyOn(api, 'adminList').mockImplementation(async kind => list(kind === 'studios' ? [studio] : []) as any);
-  await render();
-  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
-  await step(() => button('MoveActive admin').props.onPress());
+  await render(false);
+  await chooseAdmin();
   expect(api.adminList).not.toHaveBeenCalled();
   await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin username')!.props.onChangeText('admin'));
   await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin password')!.props.onChangeText('OrbitAdmin123!'));
@@ -128,9 +139,7 @@ test('admin logs in with username/password through the backend before loading pr
 });
 
 test('staff can sign in with the shared account and sign out without losing the prototype session', async () => {
-  await render();
-  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
-  await step(() => button('Staff sign in').props.onPress());
+  await render(false);
   await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Staff password')!.props.onChangeText('OrbitStaff123!'));
   await step(() => button('Sign in as staff').props.onPress());
   expect(api.staffLogin).toHaveBeenCalledWith('staff', 'OrbitStaff123!');
@@ -138,15 +147,15 @@ test('staff can sign in with the shared account and sign out without losing the 
   expect(JSON.stringify(tree.toJSON())).toContain('Internal staff account');
   await step(() => button('Sign out of staff account').props.onPress());
   expect(api.staffLogout).toHaveBeenCalled();
-  expect(JSON.stringify(tree.toJSON())).toContain('Your demo profile');
+  expect(JSON.stringify(tree.toJSON())).toContain('Welcome to Project Orbit');
+  expect(tree.root.findAllByType(BottomNav)).toHaveLength(0);
 });
 
 test('admin edits persist through the protected API instead of a local save notice', async () => {
   jest.spyOn(api, 'adminList').mockImplementation(async kind => list(kind === 'studios' ? [{ ...studio, city: 'Melbourne', latitude: -37.84, longitude: 144.98 }] : []) as any);
   jest.spyOn(api, 'adminSave').mockResolvedValue({});
-  await render();
-  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
-  await step(() => button('MoveActive admin').props.onPress());
+  await render(false);
+  await chooseAdmin();
   await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin username')!.props.onChangeText('admin'));
   await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin password')!.props.onChangeText('OrbitAdmin123!'));
   await step(() => button('Log in').props.onPress());
@@ -170,9 +179,8 @@ test('backend content replaces fixture names and an empty API list does not show
 test('rejected admin credentials leave the login form visible and do not load protected records', async () => {
   (api.adminLogin as jest.Mock).mockRejectedValue(new Error('Invalid username or password'));
   jest.spyOn(api, 'adminList');
-  await render();
-  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
-  await step(() => button('MoveActive admin').props.onPress());
+  await render(false);
+  await chooseAdmin();
   await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin username')!.props.onChangeText('wrong'));
   await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin password')!.props.onChangeText('wrong'));
   await step(() => button('Log in').props.onPress());
@@ -232,4 +240,116 @@ test('example delivery fields do not send personal details to demo checkout', as
   await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Email address')!.props.onChangeText('sample@example.com'));
   await step(() => button('Confirm demo order').props.onPress());
   expect(api.checkout).toHaveBeenCalledWith({ fulfillment: 'delivery', source: 'app' }, expect.any(String));
+});
+
+test('sign-in is always the entry screen, including a restored staff session', async () => {
+  (api.initialize as jest.Mock).mockResolvedValue({ id: 'session', profile, accountType: 'staff' });
+  await render(false);
+  expect(JSON.stringify(tree.toJSON())).toContain('Welcome to Project Orbit');
+  expect(tree.root.findAllByType(BottomNav)).toHaveLength(0);
+  expect(tree.root.findAllByType(StudioCard)).toHaveLength(0);
+  expect(api.studios).not.toHaveBeenCalled();
+});
+
+test('failed staff login cannot enter onboarding or discovery', async () => {
+  (api.staffLogin as jest.Mock).mockRejectedValue(new ApiError(401, 'Invalid username or password', 'session'));
+  await render(false);
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Staff password')!.props.onChangeText('wrong'));
+  await step(() => button('Sign in as staff').props.onPress());
+  expect(JSON.stringify(tree.toJSON())).toContain('Invalid username or password');
+  expect(tree.root.findAllByType(BottomNav)).toHaveLength(0);
+  expect(api.studios).not.toHaveBeenCalled();
+});
+
+test('admin can preview the consumer journey, return to management, and revoke access on logout', async () => {
+  jest.spyOn(api, 'adminList').mockImplementation(async kind => list(kind === 'studios' ? [studio] : []) as any);
+  jest.spyOn(api, 'adminLogout').mockResolvedValue(undefined);
+  await render(false); await chooseAdmin();
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin password')!.props.onChangeText('OrbitAdmin123!'));
+  await step(() => button('Log in').props.onPress());
+  expect(JSON.stringify(tree.toJSON())).toContain('Partner admin');
+  await step(() => button('Preview consumer app').props.onPress());
+  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
+  await step(() => button('MoveActive admin').props.onPress());
+  expect(api.adminLogin).toHaveBeenCalledTimes(1);
+  await step(() => button('Log out').props.onPress());
+  expect(api.adminLogout).toHaveBeenCalled();
+  expect(JSON.stringify(tree.toJSON())).toContain('Welcome to Project Orbit');
+  expect(tree.root.findAllByType(BottomNav)).toHaveLength(0);
+});
+
+test('expired protected API access returns to sign-in without leaving navigation open', async () => {
+  await render();
+  (api.studio as jest.Mock).mockRejectedValue(new ApiError(401, 'Session expired', 'session'));
+  await step(() => tree.root.findByType(StudioCard).props.onPress());
+  expect(JSON.stringify(tree.toJSON())).toContain('Welcome to Project Orbit');
+  expect(tree.root.findAllByType(BottomNav)).toHaveLength(0);
+});
+
+test('opening order history fetches the session-private backend detail', async () => {
+  const savedOrder = { ...quote, id: 'history-order', status: 'demo-confirmed', createdAt: '2026-11-23' };
+  (api.orders as jest.Mock).mockResolvedValue(list([savedOrder]));
+  jest.spyOn(api, 'order').mockResolvedValue(savedOrder);
+  await render();
+  await step(() => tree.root.findByType(BottomNav).props.onSelect('you'));
+  await step(() => tree.root.findAll(n => typeof n.props.onPress === 'function' && n.props.accessibilityLabel === 'View demo order history-order')[0].props.onPress());
+  expect(api.order).toHaveBeenCalledWith('history-order');
+  expect(JSON.stringify(tree.toJSON())).toContain('Thanks for moving with us.');
+});
+
+test('clearing the bag uses the backend and disables checkout', async () => {
+  (api.cart as jest.Mock).mockResolvedValue(cart);
+  jest.spyOn(api, 'clearCart').mockImplementation(async () => {
+    (api.cart as jest.Mock).mockResolvedValue(emptyCart);
+    return emptyCart;
+  });
+  await render();
+  await step(() => tree.root.findByType(BottomNav).props.onSelect('bag'));
+  await step(() => button('Clear bag').props.onPress());
+  expect(api.clearCart).toHaveBeenCalled();
+  expect(button('Review demo checkout').props.disabled).toBe(true);
+});
+
+test('failing referral and order lists do not disable staff sign-in after entering a password', async () => {
+  (api.referrals as jest.Mock).mockRejectedValue(new ApiError(400, 'property path should not exist'));
+  (api.orders as jest.Mock).mockRejectedValue(new ApiError(400, 'property path should not exist'));
+  await render(false);
+  expect(api.referrals).not.toHaveBeenCalled();
+  expect(api.orders).not.toHaveBeenCalled();
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Staff password')!.props.onChangeText('OrbitStaff123!'));
+  expect(button('Sign in as staff').props.disabled).toBe(false);
+  await step(() => button('Sign in as staff').props.onPress());
+  expect(api.staffLogin).toHaveBeenCalledWith('staff', 'OrbitStaff123!');
+  expect(tree.root.findByType(BottomNav).props.screen).toBe('discover');
+});
+
+test('admin can sign in even when anonymous session initialization fails', async () => {
+  (api.initialize as jest.Mock).mockRejectedValue(new ApiError(0, 'Cannot reach consumer sessions'));
+  jest.spyOn(api, 'adminList').mockResolvedValue(list([]));
+  await render(false); await chooseAdmin();
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin password')!.props.onChangeText('OrbitAdmin123!'));
+  expect(button('Log in').props.disabled).toBe(false);
+  await step(() => button('Log in').props.onPress());
+  expect(api.adminLogin).toHaveBeenCalledWith('admin', 'OrbitAdmin123!');
+  expect(JSON.stringify(tree.toJSON())).toContain('Partner admin');
+});
+
+test('staff can retry session initialization by signing in after an offline launch', async () => {
+  (api.initialize as jest.Mock).mockRejectedValueOnce(new ApiError(0, 'Offline')).mockResolvedValue({ id: 'session', profile });
+  await render(false);
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Staff password')!.props.onChangeText('OrbitStaff123!'));
+  expect(button('Sign in as staff').props.disabled).toBe(false);
+  await step(() => button('Sign in as staff').props.onPress());
+  expect(api.staffLogin).toHaveBeenCalled();
+  expect(tree.root.findByType(BottomNav).props.screen).toBe('discover');
+});
+
+test('password entry enables sign-in while background bootstrap is still pending', async () => {
+  (api.initialize as jest.Mock).mockReturnValue(new Promise(() => {}));
+  await render(false);
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Staff password')!.props.onChangeText('OrbitStaff123!'));
+  expect(button('Sign in as staff').props.disabled).toBe(false);
+  await chooseAdmin();
+  await step(() => tree.root.findAllByType(TextInput).find(n => n.props.accessibilityLabel === 'Admin password')!.props.onChangeText('OrbitAdmin123!'));
+  expect(button('Log in').props.disabled).toBe(false);
 });

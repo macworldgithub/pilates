@@ -13,7 +13,8 @@ export interface Workout { id: string; title: string; description: string; forma
 export interface CartItem { productId: string; variantId: string; quantity: number; productTitle: string; variantTitle: string | null; imageUrl: string | null; unitPrice: number | null; currency: string | null; available: boolean; lineTotal: number | null }
 export interface Cart { items: CartItem[]; subtotal: number | null; currency: string | null; checkoutReady: boolean; revision: number }
 export interface CheckoutInput { fulfillment: 'delivery' | 'warehouse-collect'; source: 'app'; discountCode?: 'WELCOME15' | 'SEASON10' }
-export interface Quote { items: CartItem[]; currency: string; subtotal: number; discount: number; shipping: number; total: number; fulfillment: string; attribution: { code: string; ownerType: string; ownerId: string } | null; notice: string }
+export interface OrderItem { productId: string; variantId: string; quantity: number; productTitle: string; variantTitle: string; unitPrice: number; currency: string; lineTotal: number }
+export interface Quote { items: OrderItem[]; currency: string; subtotal: number; discount: number; shipping: number; total: number; fulfillment: string; attribution: { code: string; ownerType: string; ownerId: string } | null; notice: string }
 export interface Order extends Quote { id: string; status: string; createdAt: string }
 export interface Referral extends ReferralLink { owner: { id: string; name: string }; ownerType: string; ownerId: string; commissionsEnabled: boolean }
 export interface Affiliation { id: string; studioId: string; instructorId: string }

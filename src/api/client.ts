@@ -1,10 +1,15 @@
-import * as Keychain from 'react-native-keychain';
+let KeychainModule: typeof import('react-native-keychain') | null = null;
+try {
+  KeychainModule = require('react-native-keychain');
+} catch {
+  // Native module not linked in binary; fallback to memory token
+}
 import { API_BASE_URL } from './config';
 import type { Affiliation, AppConfig, Cart, CheckoutInput, Instructor, List, Offer, Order, Product, Profile, Quote, Referral, Session, Studio, Workout } from './types';
 
 const service = 'com.projectorbit.prototype-session';
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); this.name = 'ApiError'; }
+  constructor(public status: number, message: string, public access?: 'public' | 'session' | 'admin') { super(message); this.name = 'ApiError'; }
 }
 export type Query = Record<string, string | number | undefined>;
 export const money = (value: number | null | undefined, currency = 'AUD') => value == null ? 'Unavailable' : `${currency} ${(value / 100).toFixed(2)}`;
@@ -33,7 +38,7 @@ export class OrbitApi {
   config() { return this.request<AppConfig>('/config'); }
   async request<T>(path: string, method = 'GET', body?: unknown, access: 'public' | 'session' | 'admin' = 'public', extraHeaders: Record<string, string> = {}): Promise<T> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
     try {
       const token = access === 'admin' ? this.adminToken : this.token;
       const response = await fetch(`${this.baseUrl}${path}`, {
@@ -44,7 +49,8 @@ export class OrbitApi {
       const result = await response.json();
       if (!response.ok) {
         const message = result.error?.message ?? result.message ?? 'Request failed';
-        throw new ApiError(response.status, typeof message === 'string' ? message : 'Please check the entered values and try again.');
+        const detail = typeof message === 'string' ? message : Array.isArray(message) && message.every(item => typeof item === 'string') ? message.join('\n') : 'Please check the entered values and try again.';
+        throw new ApiError(response.status, detail, access);
       }
       return result as T;
     } catch (error) {
@@ -58,15 +64,31 @@ export class OrbitApi {
     try { return await this.opening; } finally { this.opening = undefined; }
   }
   private async restore(): Promise<Session> {
-    const saved = await Keychain.getGenericPassword({ service });
-    if (saved) {
-      this.token = saved.password;
+    let saved: import('react-native-keychain').UserCredentials | false | null = null;
+    try {
+      if (KeychainModule?.getGenericPassword) {
+        saved = await KeychainModule.getGenericPassword({ service });
+      }
+    } catch {}
+    if (saved || this.token) {
+      this.token = saved ? saved.password : this.token;
       try { return await this.request<Session>('/sessions/me', 'GET', undefined, 'session'); }
-      catch (error) { if (!(error instanceof ApiError) || error.status !== 401) { throw error; } }
+      catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) { throw error; }
+        this.token = '';
+        try { await KeychainModule?.resetGenericPassword({ service }); } catch {}
+      }
     }
     const created = await this.request<Session>('/sessions', 'POST');
     this.token = created.token!;
-    await Keychain.setGenericPassword(created.id, this.token, { service, accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
+    try {
+      if (KeychainModule?.setGenericPassword) {
+        await KeychainModule.setGenericPassword(created.id, this.token, {
+          service,
+          accessible: KeychainModule.ACCESSIBLE?.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        });
+      }
+    } catch {}
     return created;
   }
   private query(query: Query) {
@@ -84,11 +106,13 @@ export class OrbitApi {
   collections() { return this.request<{ data: string[] }>('/shop/collections'); }
   offers(query: Query) { return this.request<List<Offer>>('/offers' + this.query(query)); }
   cart() { return this.request<Cart>('/shop/cart', 'GET', undefined, 'session'); }
+  clearCart() { return this.request<Cart>('/shop/cart', 'DELETE', undefined, 'session'); }
   putItem(productId: string, variantId: string, quantity: number) { return this.request<Cart>('/shop/cart/items', 'PUT', { productId, variantId, quantity }, 'session'); }
   removeItem(productId: string, variantId: string) { return this.request<Cart>(`/shop/cart/items/${encodeURIComponent(productId)}/${encodeURIComponent(variantId)}`, 'DELETE', undefined, 'session'); }
   quote(input: CheckoutInput) { return this.request<Quote>('/shop/checkout/quote', 'POST', input, 'session'); }
   checkout(input: CheckoutInput, key: string) { return this.request<Order>('/shop/checkout', 'POST', input, 'session', { 'Idempotency-Key': key }); }
   orders() { return this.request<List<Order>>('/shop/orders', 'GET', undefined, 'session'); }
+  order(id: string) { return this.request<Order>(`/shop/orders/${encodeURIComponent(id)}`, 'GET', undefined, 'session'); }
   referral(code: string) { return this.request<Referral>(`/referrals/${encodeURIComponent(code)}`); }
   referrals() { return this.request<List<Referral>>('/referrals?limit=100'); }
   applyReferral(code: string) { return this.request('/referrals/apply', 'POST', { code }, 'session'); }

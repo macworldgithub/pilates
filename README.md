@@ -1,21 +1,26 @@
 # Project Orbit · MoveActive prototype
 
-Project Orbit is a React Native MVP connected to the NestJS / Express / MongoDB API in `../pilates-backend`. Studio, instructor, workout, product, variant, cart, referral, onboarding and demo-order data come from the API. Commerce remains simulated: no live Shopify checkout, payments, inventory writes or commissions.
+React Native internal MVP connected to **https://pilates-backend-sigma.vercel.app/api/v1** in both development and release builds. The backend is in `../pilates-backend`.
 
-## Run on Android
+## Current deployment prerequisite
 
-Install Node.js (22.11 or newer), Android Studio, and the Android SDK. Start an Android emulator or connect an Android device with USB debugging enabled. From the project root:
+The audit on 23 November 2026 found that the hosted API's Vercel rewrite adds `path` to request queries. Strict backend validation rejects catalog, referral and order/admin list requests with `400: property path should not exist`. The fix is prepared in `../pilates-backend/src/serverless.ts` with regression tests. Deploy the updated backend source before playtesting. Merely redeploying the old source will retain the error.
+
+See `../API_INTEGRATION_AUDIT.md` for scope coverage, evidence and the deployment checklist. The configured host remains the supplied deployment; the app shows connection errors instead of substituting local records.
+
+## Run
+
+Use Node.js 22.11 or newer and install dependencies with `npm ci`.
+
+Android requires Android Studio, an emulator or a USB-connected device:
 
 ```sh
-npm install
+npm start
+# In a second terminal:
 npm run android
 ```
 
-If the app is already installed and Metro is not open, run `npm start` in a separate terminal first. The `android` script builds and launches the app on the connected emulator or device.
-
-## Run on iOS
-
-The iOS project is included, but building it requires macOS and Xcode. From a Mac, install the CocoaPods dependencies and run:
+iOS requires macOS, Xcode and CocoaPods:
 
 ```sh
 bundle install
@@ -23,73 +28,56 @@ cd ios && bundle exec pod install && cd ..
 npm run ios
 ```
 
-## Prototype journeys
+Rebuild native apps after installing `react-native-keychain`; a Metro reload does not link native modules. No local backend or LAN-address configuration is required with the deployed HTTPS API.
 
-- Onboarding with area and interest selection
-- Workout discovery and session detail
-- Studio directory filters, studio profile, and affiliated instructor profile
-- Product tags within sessions and a sample MoveActive shop
-- Bag, example checkout, and demo order confirmation with no purchase
-- Studio and instructor referral concept with sample attribution code
-- Internal partner admin preview for studios and studio-led instructor affiliations
+## Sign-in and navigation
 
-The screen flow and API-driven interactions are composed in `App.tsx`. Shared presentation styles live in `src/components/OrbitUI.tsx`; dynamic cards and internal management live in `OrbitCards.tsx` and `AdminPanel.tsx`. API contracts, requests and host configuration live in `src/api`. Business records are seeded by `../pilates-backend/src/ui-seed-data.ts`. Images come from the backend's `imageUrl` / optional `imageUrls` fields and `/media/images/*` routes. `src/data/artwork.ts` resolves media paths and stale development-host URLs against the active API host; it contains no local artwork or record-ID mappings. Onboarding areas, interest options, hero images and available referral codes also come from the API.
+Every fresh app launch opens **staff/admin sign-in**, including when a previous session is restored.
 
-Community, bookings, self-service portals, independent instructor approval workflows, live inventory, production Shopify checkout, payments, and automated commissions are outside this prototype.
+| Role | Username | Prototype password | Destination |
+| --- | --- | --- | --- |
+| Staff | `staff` | `OrbitStaff123!` | Location/interests/format onboarding on first sign-in, otherwise Discover |
+| Admin | `admin` | `OrbitAdmin123!` | Partner admin with studios, instructors and affiliations |
 
-## Start the connected prototype
+The server validates credentials. Failed logins cannot open app navigation. Staff cannot access admin management. Admins can preview the consumer app and return to management without another login. Sign-out returns to the sign-in gate, revoking admin tokens where applicable. Expired protected API access returns to sign-in with a retry action.
 
-Start the backend first:
+An anonymous backend session still holds the device's profile, bag and demo orders; it is not a guest entry point in the UI. Tokens use device secure storage when available and memory for the current run if the native module is unavailable. Session data is retained on staff logout. Admin tokens remain in memory until logout or process exit.
 
-```powershell
-cd D:\mvp\pilates-backend
-npm ci
-npm run seed
-npm run build
-npm start
+## Backend-driven journeys
+
+- Onboarding area, coordinates, interests, formats and hero artwork from `/config`; selections saved to `/sessions/me`.
+- Fresh workouts, format/level/search filters, workout detail, affiliated instructors and tagged products.
+- Studio directory, format/nearest/search filters, branding, address, instructors, selected sessions and outbound website/booking links.
+- Instructor profiles reached through studios and workouts, with affiliations, content and referral codes.
+- Separate D2C shop, backend collections, search, product images, variants, simulated availability, bundle components and backend prices.
+- Persistent bag quantities/removal/clear, server quotes, demo discounts, warehouse collection/delivery concepts and idempotent simulated orders.
+- Session-private order history and freshly fetched order detail.
+- Studio/instructor recommendation code/link display and backend attribution applied to the next demo order.
+- Admin creation/editing of studio and instructor records; configurable images, links, formats, partner type, publication, independent approval and affiliations.
+
+All displayed business records and prices come from the API. Runtime code does not import local fallback records. Images resolve relative `/media/images/*` paths against the deployed host, with a visible loading/error fallback. Empty API results stay empty. Discovery requests only the data needed by the active screen, reducing unnecessary calls and rate-limit pressure.
+
+The area selector uses backend-provided sample coordinates rather than device GPS. Session playback, workshop illustrations and membership remain labelled concepts. Seeded videos and outbound bookings use example.com destinations. The checkout example form stays local; no personal details or payment information are submitted.
+
+## Scope boundary
+
+The developer brief requests a clickable simulated prototype. Checkout never charges, ships or changes inventory; referral codes do not calculate commissions. Production Shopify, subscription billing, real videos/bookings, B2B ordering, studio inventory, community, self-service portals and automated payouts remain deferred. No backend reseeding is needed for this integration fix.
+
+## Verification
+
+```sh
+npx tsc --noEmit
+npm run lint
+npm test -- --runInBand
 ```
 
-From a second terminal, run `npm run android` in `D:\mvp\pilates`. Rebuild the native app after installing dependencies: session tokens now use `react-native-keychain`, so a Metro reload alone will not add the native module. On macOS, install CocoaPods dependencies before rebuilding iOS.
+The backend additionally contains HTTP integration tests and a repeatable hosted check:
 
-The default development API in [config.ts](src/api/config.ts) is `http://10.0.2.2:4000/api/v1` for an Android emulator and `http://localhost:4000/api/v1` for an iOS simulator. A physical device needs your computer's LAN IP in that file and backend `HOST=0.0.0.0`; restart the backend after changing `.env`. Release builds need a deployed HTTPS endpoint configured in the same file.
+```sh
+cd ../pilates-backend
+npm test
+# After deploying the updated backend:
+npm run verify:deployed -- --checkout --report docs/deployed-api-verification.json
+```
 
-The first launch creates a prototype session and securely stores its token. Later launches restore onboarding and the server-side bag/order history. Expired sessions are replaced on reconnection. Loading, offline errors, empty search results and unavailable variants are shown explicitly. The area selector uses sample Melbourne-area coordinates rather than device GPS.
-
-Admin uses the fixed prototype login: **username `admin`**, **password `OrbitAdmin123!`**. These credentials are hardcoded in the backend's `src/admin-auth.ts`. The mobile login form submits them to `POST /admin/auth/login`; verification happens on the server, which returns an eight-hour admin access token. The token is kept in memory, cleared when leaving the admin screen, and revoked by the Log out button. A rejected login never opens the admin records. Studios and instructors can be created/edited; affiliations can be created/removed. The backend validates every write.
-
-Internal playtest staff can optionally sign in without changing the anonymous onboarding flow. The shared fixed credentials are **username `staff`**, **password `OrbitStaff123!`**, verified by the backend at `POST /auth/login` against the current prototype session. Staff status is retained with that session; signing out returns it to guest mode. Staff credentials do not grant admin access. The admin account remains separate.
-
-Sample UI content: Core Collective, The Pilates Room, Form & Flow Studio, Mia Chen, Reformer Reset, Full Body Mat Flow, pink/blue crew grip socks (AUD 22.95), Espresso mat (AUD 109.00), and Starter Bundle (AUD 129.00). Apply `MIA10` from Studio connection for attribution; it is not a discount code. Demo discounts are `WELCOME15` and `SEASON10` in the bag. Checkout quotes and totals come from the server, and retries reuse an idempotency key.
-
-Run `npm test -- --runInBand`, `npx tsc --noEmit`, and `npm run lint` for frontend verification. The backend has its own HTTP tests, including an end-to-end journey using these exact UI records, under `../pilates-backend/test`.
-
-## Reference screen audit · 23 November 2026
-
-The supplied images contain repeated copies of the same layouts. The ten unique reference screen types now have reachable implementations:
-
-| Reference screen | Implementation and route |
-| --- | --- |
-| Discover | Discover tab: studio card, session, instructor recommendation, search, nearby/format/level filters; directory link retained |
-| Session | Session detail: instructor, studio, start-session demo, studio edit and related sessions |
-| Product tag / studio edit | Session → Shop this studio edit: tagged products, variants, add to bag, instructor attribution, map link, expandable workshop concept |
-| Instructor | Instructor profile: image, bio, affiliated studios, recommendations and sessions |
-| Shop | Shop tab: search, collection filters, editorial hero, product grid and bag access |
-| Product detail | Product image/gallery thumbnails, detail view, availability, variants, quantities and add to bag |
-| Shopping bag | Quantity/remove controls, applied demo discount, server-priced summary and checkout |
-| Checkout concept | Local-only example delivery fields, quote review and idempotent demo confirmation |
-| Order confirmation | Confirmation panel, order items/totals, studio attribution and return/shopping actions |
-| Premium membership concept | You or Move → Explore premium membership: membership panel, expandable trial FAQ and sessions link |
-
-The Move tab provides a session directory. Detail navigation returns to the originating screen, including studio edit → product → back. Existing onboarding, studio directory/profile, guest/staff access, referral and internal admin flows are retained.
-
-These are prototype implementations. Session playback remains simulated, membership pricing/trials are unconfirmed, the workshop/map graphic is illustrative, and checkout creates demo orders without payments or fulfillment. Actual videos, approved brand photography, real event dates/booking URLs, Shopify checkout and subscription billing still require production content/integrations. The release API endpoint in `src/api/config.ts` must also be configured before distribution.
-
-### Seeded image repair
-
-Legacy v1 seeds used `placehold.co` URLs whose default SVG responses cannot be decoded by native React Native Image. The previous v3 migration only covered UI-v2 records. Both fresh seed generations now use packaged backend JPG/PNG files; `orbit-media-v4` repairs old seed URLs even when v3 is already marked complete, retaining custom image URLs and publication state.
-
-`OrbitImage` supplies a visible fallback and tap-to-retry on loading errors. Relative media paths and localhost/Android-emulator media URLs use the active API host. Gallery images are optional `imageUrls` on products; when only one approved image exists, the detail control changes its framing instead of inventing extra photographs.
-
-Apply the repair on another database with `npm run seed` in `../pilates-backend`, then restart its API and reload the app. The configured development database was migrated successfully during this audit.
-
-Validation: frontend TypeScript, ESLint and 25 Jest tests; backend TypeScript/build and 34 integration tests, including all seeded image routes, v4 migration preservation, instructor-aware search and the new frontend journeys. Discovery image rendering was also inspected in the running iOS simulator. Android device rendering was not inspected in this session.
+The hosted check reads seeded catalog/admin records, uses disposable consumer sessions and creates one explicitly simulated order when `--checkout` is supplied. It never modifies seeded catalog records, accepts no payment data, and revokes its test sessions/admin token afterward. The sample order/event remains in internal audit history.
