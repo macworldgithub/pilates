@@ -29,8 +29,8 @@ function App() {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [search, setSearch] = useState('');
   const [collections, setCollections] = useState<string[]>([]);
-  const [studios, setStudios] = useState<Studio[]>([]);
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [studioResults, setStudioResults] = useState<Studio[]>([]);
+  const [workoutResults, setWorkoutResults] = useState<Workout[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
 
@@ -126,6 +126,13 @@ function App() {
     loadSupport().catch(reportError).finally(() => setPending(n => n - 1));
   }, [consumerActive, sessionId, loadSupport, reportError]);
 
+  const studios = studioResults.filter(item =>
+    selectedFormats.length === 0 || item.formats.some(format => selectedFormats.includes(format)),
+  );
+  const workouts = workoutResults.filter(item =>
+    (selectedFormats.length === 0 || selectedFormats.includes(item.format)) &&
+    (selectedLevels.length === 0 || selectedLevels.includes(item.level)),
+  );
   const reload = useCallback(async () => {
     const version = ++listVersion.current;
     const profile = session?.profile;
@@ -144,22 +151,8 @@ function App() {
       screen === 'you' ? api.orders() : null,
     ]);
     if (version === listVersion.current) {
-      if (s) {
-        const filteredStudios = selectedFormats.length > 0
-          ? s.data.filter(item => item.formats.some(f => selectedFormats.includes(f as Format)))
-          : s.data;
-        setStudios(filteredStudios);
-      }
-      if (w) {
-        let filteredWorkouts = w.data;
-        if (selectedFormats.length > 0) {
-          filteredWorkouts = filteredWorkouts.filter(item => selectedFormats.includes(item.format as Format));
-        }
-        if (selectedLevels.length > 0) {
-          filteredWorkouts = filteredWorkouts.filter(item => selectedLevels.includes(item.level));
-        }
-        setWorkouts(filteredWorkouts);
-      }
+      if (s) { setStudioResults(s.data); }
+      if (w) { setWorkoutResults(w.data); }
       if (p) {
         const filteredProducts = selectedCollections.length > 0
           ? p.data.filter(item => selectedCollections.includes(item.collection))
@@ -171,7 +164,7 @@ function App() {
       if (bag) { setCart(bag); }
       if (history) { setOrders(history.data); }
     }
-  }, [selectedFormats, selectedLevels, nearMe, search, selectedCollections, session?.profile?.latitude, session?.profile?.longitude, screen, area]);
+  }, [nearMe, search, selectedCollections, session?.profile?.latitude, session?.profile?.longitude, screen, area]);
   useEffect(() => {
     if (!sessionId || !access || !['discover', 'move', 'studios', 'shop', 'you', 'bag'].includes(screen)) { return; }
     const timer = setTimeout(() => {
@@ -259,6 +252,8 @@ function App() {
   });
   const primaryStudio = studios[0];
   const primaryWorkout = workouts[0];
+  const showDiscoverStudioResults = !!search.trim() || selectedFormats.length > 0 || !nearMe;
+  const showDiscoverWorkoutResults = !!search.trim() || selectedFormats.length > 0 || selectedLevels.length > 0;
   const selectedVariant = product?.variants.find(v => v.id === variantId);
   const noResults = (message: string) => <View style={styles.infoBox}><Text style={styles.bodyCopy}>{message}</Text></View>;
   const workoutCards = (items: Workout[]) => items.length ? items.map(w => <WorkoutCard key={w.id} workout={w} onPress={() => openWorkout(w.id)} />) : noResults('No published sessions match these filters.');
@@ -324,8 +319,11 @@ function App() {
             <Button secondary small label="Browse studio directory" onPress={() => goTab('studios')} />
           </View>
         </View>}
-        {(search.trim() ? studios : studios.slice(0, 1)).map(value => <StudioCard key={value.id} studio={value} onPress={() => openStudio(value.id)} />)}
-        {workoutCards(search.trim() ? workouts : workouts.slice(0, 1))}
+        {showDiscoverStudioResults && <SectionTitle title={`Matching studios (${studios.length})`} />}
+        {(showDiscoverStudioResults ? studios : studios.slice(0, 1)).map(value => <StudioCard key={value.id} studio={value} onPress={() => openStudio(value.id)} />)}
+        {showDiscoverStudioResults && studios.length === 0 && noResults('No studios match your search or filters.')}
+        {showDiscoverWorkoutResults && <SectionTitle title={`Matching sessions (${workouts.length})`} />}
+        {workoutCards(showDiscoverWorkoutResults ? workouts : workouts.slice(0, 1))}
         {!!primaryWorkout?.instructors?.[0] && <Pressable accessibilityRole="button" onPress={() => openInstructor(primaryWorkout.instructors![0].id)} style={styles.recommendCard}><Text style={styles.cardTitle}>✓ Recommended by {primaryWorkout.instructors[0].name}</Text><Text style={styles.meta}>{primaryWorkout.studio?.name} · Studio connection</Text></Pressable>}
         <SectionTitle title="Your Pilates world" action="Studio directory" onPress={() => goTab('studios')} />
         <Button secondary label="Explore all sessions" onPress={() => goTab('move')} />
@@ -339,7 +337,7 @@ function App() {
           {['beginner', 'intermediate', 'advanced'].map(lvl => <Chip key={lvl} label={lvl.charAt(0).toUpperCase() + lvl.slice(1)} active={selectedLevels.includes(lvl)} onPress={() => toggleLevel(lvl)} />)}
           {(selectedFormats.length > 0 || selectedLevels.length > 0) && <Chip label="Clear filters ✕" active onPress={() => { setSelectedFormats([]); setSelectedLevels([]); }} />}
         </View>
-        {workoutCards(workouts)}<Button secondary label="Explore premium membership" onPress={() => navigate('membership')} />
+        <Text style={styles.resultCount}>{workouts.length} MATCHING SESSIONS</Text>{workoutCards(workouts)}<Button secondary label="Explore premium membership" onPress={() => navigate('membership')} />
       </ScrollView>;
       case 'membership': return <MembershipScreen onExplore={() => goTab('move')} />;
       case 'productTag': return workout && <ProductTagScreen key={workout.id} workout={workout} busy={busy} event={config?.eventConcept} onProduct={openProduct} onAdd={addTaggedProduct} onKeepExploring={back} onMap={openMap} onStudio={openStudio} />;
