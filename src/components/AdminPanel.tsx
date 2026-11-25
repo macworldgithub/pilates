@@ -69,37 +69,156 @@ export function AdminPanel({ task, busy: actionBusy, onChanged, onLogout, onPrev
     }
     await load(); await onChanged(); setEditing(undefined);
   });
-  const field = (label: string, value: string, update: (s: string) => void, maxLength = 200) => <View key={label}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={update} maxLength={maxLength} style={styles.formInput} autoCapitalize="none" autoCorrect={false} /></View>;
+  const field = (label: string, value: string, update: (s: string) => void, maxLength = 200) => (
+    <View key={label} style={{ marginBottom: 10 }}>
+      <Text style={styles.label}>{label.toUpperCase()}</Text>
+      <TextInput
+        accessibilityLabel={label}
+        placeholder={`Enter ${label.toLowerCase()}`}
+        placeholderTextColor="#9e9994"
+        value={value}
+        onChangeText={update}
+        maxLength={maxLength}
+        style={styles.formInput}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+    </View>
+  );
+
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-    <Text style={styles.eyebrow}>MOVEACTIVE · INTERNAL</Text><Heading title="Partner admin" subtitle="Manage studio records, instructors and studio-led affiliations." />
-    <Button secondary label="Refresh admin records" disabled={busy} onPress={() => task(load)} />
-    <View style={styles.chipRow}>{(['studios', 'instructors', 'affiliations'] as Kind[]).map(k => <Chip key={k} label={`${k} · ${k === 'studios' ? studios.length : k === 'instructors' ? instructors.length : affiliations.length}`} active={kind === k} onPress={() => { setKind(k); setEditing(undefined); }} />)}</View>
+    <View style={styles.adminHeader}>
+      <Button small secondary label="‹ Consumer App" disabled={busy} onPress={onPreview} />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Button small secondary label="Refresh" disabled={busy} onPress={() => task(load)} />
+        <Button small secondary label="Log out" disabled={busy} onPress={onLogout} />
+      </View>
+    </View>
+
+    <Text style={styles.eyebrow}>MOVEACTIVE · INTERNAL ADMIN</Text>
+    <Heading title="Partner admin" subtitle="Manage studio records, instructors and affiliations." />
+
+    <View style={[styles.chipRow, { marginBottom: 16 }]}>
+      {(['studios', 'instructors', 'affiliations'] as Kind[]).map(k => (
+        <Chip
+          key={k}
+          label={`${k.charAt(0).toUpperCase() + k.slice(1)} · ${k === 'studios' ? studios.length : k === 'instructors' ? instructors.length : affiliations.length}`}
+          active={kind === k}
+          onPress={() => { setKind(k); setEditing(undefined); }}
+        />
+      ))}
+    </View>
+
     {kind === 'affiliations' ? <>
-      {affiliations.map(a => <View key={a.id} style={styles.infoBox}><Text style={styles.cardTitle}>{instructors.find(i => i.id === a.instructorId)?.name ?? a.instructorId} → {studios.find(s => s.id === a.studioId)?.name ?? a.studioId}</Text><Button small secondary label="Remove affiliation" disabled={busy} onPress={() => task(async () => { await api.adminRemoveAffiliation(a.studioId, a.instructorId); await load(); await onChanged(); })} /></View>)}
-      <Text style={styles.sectionTitle}>Link an instructor to a studio</Text>
-      <Text style={styles.label}>STUDIO</Text><View style={styles.chipRow}>{studios.map(s => <Chip key={s.id} label={s.name} active={studioId === s.id} onPress={() => setStudioId(s.id)} />)}</View>
-      <Text style={styles.label}>INSTRUCTOR</Text><View style={styles.chipRow}>{instructors.map(i => <Chip key={i.id} label={i.name} active={instructorId === i.id} onPress={() => setInstructorId(i.id)} />)}</View>
-      <Button label="Save affiliation" disabled={busy || !studioId || !instructorId} onPress={() => task(async () => { await api.adminAffiliation(studioId, instructorId); await load(); await onChanged(); setStudioId(''); setInstructorId(''); })} />
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>{`Affiliations (${affiliations.length})`}</Text>
+      </View>
+      {affiliations.map(a => {
+        const inst = instructors.find(i => i.id === a.instructorId);
+        const st = studios.find(s => s.id === a.studioId);
+        return (
+          <View key={a.id} style={styles.adminRecord}>
+            <View style={styles.flex1}>
+              <Text style={styles.cardTitle}>{inst?.name ?? a.instructorId}</Text>
+              <Text style={styles.meta}>Affiliated with {st?.name ?? a.studioId}</Text>
+            </View>
+            <Button
+              small
+              secondary
+              label="Remove"
+              disabled={busy}
+              onPress={() => task(async () => { await api.adminRemoveAffiliation(a.studioId, a.instructorId); await load(); await onChanged(); })}
+            />
+          </View>
+        );
+      })}
+      {!affiliations.length && <Text style={[styles.meta, { marginBottom: 16 }]}>No affiliations recorded yet.</Text>}
+
+      <View style={[styles.adminForm, { marginTop: 14 }]}>
+        <Text style={styles.sectionTitle}>Link instructor to a studio</Text>
+        <Text style={[styles.label, { marginTop: 10 }]}>SELECT STUDIO</Text>
+        <View style={styles.chipRow}>{studios.map(s => <Chip key={s.id} label={s.name} active={studioId === s.id} onPress={() => setStudioId(s.id)} />)}</View>
+        <Text style={[styles.label, { marginTop: 6 }]}>SELECT INSTRUCTOR</Text>
+        <View style={styles.chipRow}>{instructors.map(i => <Chip key={i.id} label={i.name} active={instructorId === i.id} onPress={() => setInstructorId(i.id)} />)}</View>
+        <Button label="Save affiliation" disabled={busy || !studioId || !instructorId} onPress={() => task(async () => { await api.adminAffiliation(studioId, instructorId); await load(); await onChanged(); setStudioId(''); setInstructorId(''); })} />
+      </View>
     </> : <>
-      <Button label={`Add ${kind === 'studios' ? 'studio' : 'instructor'}`} secondary disabled={busy} onPress={() => edit(null)} />
-      {editing === undefined ? (kind === 'studios' ? studios : instructors).map(record => <View key={record.id} style={styles.infoBox}><OrbitImage source={artwork(record)} style={styles.adminThumb} /><Text style={styles.cardTitle}>{record.name}</Text><Text style={styles.meta}>{record.published ? 'Published' : 'Archived / draft'}</Text><Button small label="Edit record" disabled={busy} onPress={() => edit(record)} /></View>) : <View style={styles.adminForm}>
-        {field('Name', name, setName)}{field(kind === 'studios' ? 'Description' : 'Bio', detail, setDetail, 5000)}{field('Image URL or backend media path', imageUrl, setImageUrl, 2048)}
-        <Chip label={published ? 'Published' : 'Draft / archived'} active={published} onPress={() => setPublished(!published)} />
+      {editing === undefined ? <>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>
+            {kind === 'studios' ? `Studios (${studios.length})` : `Instructors (${instructors.length})`}
+          </Text>
+          <Button
+            small
+            secondary
+            label={`+ Add ${kind === 'studios' ? 'studio' : 'instructor'}`}
+            disabled={busy}
+            onPress={() => edit(null)}
+          />
+        </View>
+
+        {(kind === 'studios' ? studios : instructors).map(record => (
+          <View key={record.id} style={styles.adminRecord}>
+            <OrbitImage source={artwork(record)} style={styles.adminThumb} />
+            <View style={styles.flex1}>
+              <Text style={styles.cardTitle}>{record.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <Text style={record.published ? styles.activeBadge : [styles.activeBadge, { color: '#888', backgroundColor: '#f0ede8' }]}>
+                  {record.published ? 'PUBLISHED' : 'DRAFT'}
+                </Text>
+                {'partnerType' in record && (
+                  <Text style={styles.meta}>· {record.partnerType}</Text>
+                )}
+                {'independent' in record && (
+                  <Text style={styles.meta}>· {record.independent ? 'independent' : 'studio-led'}</Text>
+                )}
+              </View>
+            </View>
+            <Button small label="Edit" disabled={busy} onPress={() => edit(record)} />
+          </View>
+        ))}
+        {!(kind === 'studios' ? studios : instructors).length && (
+          <Text style={[styles.meta, { marginVertical: 12 }]}>No {kind} found.</Text>
+        )}
+      </> : <View style={styles.adminForm}>
+        <Text style={[styles.sectionTitle, { marginBottom: 14 }]}>
+          {editing ? `Edit ${kind === 'studios' ? 'Studio' : 'Instructor'}` : `New ${kind === 'studios' ? 'Studio' : 'Instructor'}`}
+        </Text>
+        {field('Name', name, setName)}
+        {field(kind === 'studios' ? 'Description' : 'Bio', detail, setDetail, 5000)}
+        {field('Image URL or media path', imageUrl, setImageUrl, 2048)}
+        <Text style={[styles.label, { marginTop: 4 }]}>PUBLICATION STATUS</Text>
+        <View style={styles.chipRow}>
+          <Chip label="Published" active={published} onPress={() => setPublished(true)} />
+          <Chip label="Draft / archived" active={!published} onPress={() => setPublished(false)} />
+        </View>
         {kind === 'studios' && <>
-          {field('Address', address, setAddress, 300)}{field('City', city, setCity, 100)}{field('Country code', country, setCountry, 2)}
-          {field('Latitude', latitude, setLatitude)}{field('Longitude', longitude, setLongitude)}{field('Website URL', website, setWebsite, 2048)}{field('Booking URL', booking, setBooking, 2048)}
-          <Text style={styles.label}>FORMATS</Text><View style={styles.chipRow}>{['reformer', 'mat'].map(f => <Chip key={f} label={f} active={formats.includes(f)} onPress={() => setFormats(old => old.includes(f) ? old.filter(x => x !== f) : [...old, f])} />)}</View>
-          <Text style={styles.label}>PARTNER TYPE</Text><View style={styles.chipRow}>{['partner', 'stockist', 'listed'].map(value => <Chip key={value} label={value} active={partnerType === value} onPress={() => setPartnerType(value)} />)}</View>
+          {field('Address', address, setAddress, 300)}
+          {field('City', city, setCity, 100)}
+          {field('Country code', country, setCountry, 2)}
+          {field('Latitude', latitude, setLatitude)}
+          {field('Longitude', longitude, setLongitude)}
+          {field('Website URL', website, setWebsite, 2048)}
+          {field('Booking URL', booking, setBooking, 2048)}
+          <Text style={[styles.label, { marginTop: 4 }]}>FORMATS</Text>
+          <View style={styles.chipRow}>{['reformer', 'mat'].map(f => <Chip key={f} label={f} active={formats.includes(f)} onPress={() => setFormats(old => old.includes(f) ? old.filter(x => x !== f) : [...old, f])} />)}</View>
+          <Text style={[styles.label, { marginTop: 4 }]}>PARTNER TYPE</Text>
+          <View style={styles.chipRow}>{['partner', 'stockist', 'listed'].map(value => <Chip key={value} label={value} active={partnerType === value} onPress={() => setPartnerType(value)} />)}</View>
         </>}
         {kind === 'instructors' && <>
+          <Text style={[styles.label, { marginTop: 4 }]}>INSTRUCTOR TYPE</Text>
           <View style={styles.chipRow}><Chip label="Studio-led" active={!independent} onPress={() => setIndependent(false)} /><Chip label="Independent" active={independent} onPress={() => setIndependent(true)} /></View>
-          {independent && <><Text style={styles.label}>MOVEACTIVE APPROVAL</Text><View style={styles.chipRow}>{['pending', 'approved', 'rejected'].map(value => <Chip key={value} label={value} active={approval === value} onPress={() => setApproval(value)} />)}</View></>}
+          {independent && <><Text style={[styles.label, { marginTop: 4 }]}>MOVEACTIVE APPROVAL</Text><View style={styles.chipRow}>{['pending', 'approved', 'rejected'].map(value => <Chip key={value} label={value} active={approval === value} onPress={() => setApproval(value)} />)}</View></>}
           <Text style={styles.finePrint}>{independent ? 'Independent profiles require MoveActive approval before public discovery.' : 'Add a studio affiliation to make a published studio-led instructor discoverable.'}</Text>
         </>}
-        <Button label="Save changes" disabled={busy || !name.trim() || !detail.trim() || !imageUrl.trim() || (kind === 'studios' && (!address.trim() || !city.trim() || !country.trim() || !website.trim() || !booking.trim() || !formats.length))} onPress={save} /><Button secondary label="Cancel" disabled={busy} onPress={() => setEditing(undefined)} />
+        <Button label="Save changes" disabled={busy || !name.trim() || !detail.trim() || !imageUrl.trim() || (kind === 'studios' && (!address.trim() || !city.trim() || !country.trim() || !website.trim() || !booking.trim() || !formats.length))} onPress={save} />
+        <Button secondary label="Cancel" disabled={busy} onPress={() => setEditing(undefined)} />
       </View>}
     </>}
-    <Button secondary label="Preview consumer app" disabled={busy} onPress={onPreview} />
-    <Button secondary label="Log out" disabled={busy} onPress={onLogout} />
+
+    <View style={{ marginTop: 24, paddingBottom: 20 }}>
+      <Button secondary label="Preview consumer app" disabled={busy} onPress={onPreview} />
+      <Button secondary label="Log out" disabled={busy} onPress={onLogout} />
+    </View>
   </ScrollView>;
 }

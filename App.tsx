@@ -149,7 +149,13 @@ function App() {
   const navigate = (next: Screen) => { navigationHistory.current.push(screen); setScreen(next); };
   const goTab = (next: Screen) => { navigationHistory.current = []; setTab(next); setScreen(next); setSearch(''); setNotice(''); setFiltersOpen(false); };
   const back = useCallback(() => {
-    if (screen === 'staffLogin' || screen === 'admin' || screen === 'onboarding') { return; }
+    if (screen === 'staffLogin' || screen === 'onboarding') { return; }
+    if (screen === 'admin') {
+      navigationHistory.current = [];
+      setTab('discover');
+      setScreen(session?.profile?.onboardingComplete ? 'discover' : 'onboarding');
+      return;
+    }
     const previous = navigationHistory.current.pop();
     if (previous) { setScreen(previous); return; }
     const destinations: Partial<Record<Screen, Screen>> = { studio: 'studios', instructor: studio ? 'studio' : 'discover', session: 'discover', product: 'shop', bag: 'shop', checkout: 'bag', order: 'you', productTag: 'session', membership: 'you', referral: 'you', admin: 'you', staffLogin: session?.profile?.onboardingComplete ? 'you' : 'onboarding' };
@@ -157,7 +163,7 @@ function App() {
   }, [screen, studio, tab, session?.profile?.onboardingComplete]);
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (['staffLogin', 'admin', 'onboarding', 'discover', 'move', 'studios', 'shop', 'you'].includes(screen)) { return false; }
+      if (['staffLogin', 'onboarding', 'discover', 'move', 'studios', 'shop', 'you'].includes(screen)) { return false; }
       back(); return true;
     });
     return () => listener.remove();
@@ -226,7 +232,7 @@ function App() {
         <Heading title="Welcome to Project Orbit" subtitle="Sign in as staff to explore, or as admin to manage studios and instructors." />
         <View style={styles.chipRow}>{(['staff', 'admin'] as const).map(role => <Chip key={role} label={role === 'staff' ? 'Staff' : 'Admin'} active={loginRole === role} onPress={() => { setLoginRole(role); setStaffUsername(role); setStaffPassword(''); setError(''); }} />)}</View>
         <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff username' : 'Admin username'} value={staffUsername} onChangeText={setStaffUsername} autoCapitalize="none" autoCorrect={false} placeholder="Username" style={styles.formInput} />
-        <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff password' : 'Admin password'} value={staffPassword} onChangeText={setStaffPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Password" style={styles.formInput} />
+        <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff password' : 'Admin password'} value={staffPassword} onChangeText={setStaffPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Enter your password" placeholderTextColor="#9e9994" style={styles.formInput} />
         <Button label={loginRole === 'staff' ? 'Sign in as staff' : 'Log in'} disabled={pending > 0 || !staffUsername.trim() || !staffPassword} onPress={() => task(async () => {
           if (loginRole === 'admin') {
             await api.adminLogin(staffUsername.trim(), staffPassword); setAccess('admin'); setScreen('admin');
@@ -252,12 +258,12 @@ function App() {
       </ScrollView>;
       case 'discover': return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>GOOD MORNING, MOVER</Text><Heading title="Find your next move." />
-        <View style={styles.chipRow}><Chip label="Near me" active={nearMe} onPress={() => setNearMe(!nearMe)} />{(config?.formats ?? []).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat'} active={format === f} onPress={() => setFormat(f)} />)}<Chip label="Beginner" active={level === 'beginner'} onPress={() => setLevel(level ? '' : 'beginner')} /><Chip label="Filters ☷" active={filtersOpen} onPress={() => setFiltersOpen(!filtersOpen)} /></View>
+        <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search studios, classes, instructors" value={search} onChangeText={setSearch} placeholder="Search studios, classes, instructors" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
+        <View style={[styles.chipRow, { marginTop: 4 }]}><Chip label="Near me" active={nearMe} onPress={() => setNearMe(!nearMe)} />{(config?.formats ?? []).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat'} active={format === f} onPress={() => setFormat(f)} />)}<Chip label="Beginner" active={level === 'beginner'} onPress={() => setLevel(level ? '' : 'beginner')} /><Chip label="Filters ☷" active={filtersOpen} onPress={() => setFiltersOpen(!filtersOpen)} /></View>
         {filtersOpen && <View style={styles.infoBox}><Text style={styles.label}>SESSION LEVEL</Text><View style={styles.chipRow}>{['', 'beginner', 'intermediate', 'advanced'].map(value => <Chip key={value} label={value || 'All levels'} active={level === value} onPress={() => setLevel(value)} />)}</View><Button secondary small label="Browse studio directory" onPress={() => goTab('studios')} /></View>}
         {(search.trim() ? studios : studios.slice(0, 1)).map(value => <StudioCard key={value.id} studio={value} onPress={() => openStudio(value.id)} />)}
         {workoutCards(search.trim() ? workouts : workouts.slice(0, 1))}
         {!!primaryWorkout?.instructors?.[0] && <Pressable accessibilityRole="button" onPress={() => openInstructor(primaryWorkout.instructors![0].id)} style={styles.recommendCard}><Text style={styles.cardTitle}>✓ Recommended by {primaryWorkout.instructors[0].name}</Text><Text style={styles.meta}>{primaryWorkout.studio?.name} · Studio connection</Text></Pressable>}
-        <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search studios, classes, instructors" value={search} onChangeText={setSearch} placeholder="Search studios, classes, instructors" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
         <SectionTitle title="Your Pilates world" action="Studio directory" onPress={() => goTab('studios')} />
         <Button secondary label="Explore all sessions" onPress={() => goTab('move')} />
         {offers.map(o => <Pressable key={o.id} style={styles.recommendCard} onPress={() => openStudio(o.studio.id)}><View style={styles.flex1}><Text style={styles.cardTitle}>{o.title}</Text><Text style={styles.meta}>{o.studio.name} · {o.distanceKm} km · {o.description}</Text></View></Pressable>)}
@@ -295,7 +301,7 @@ function App() {
         <Text style={styles.eyebrow}>{workout.level.toUpperCase()} · {workout.durationMinutes} MIN · {workout.format.toUpperCase()}</Text><Heading title={workout.title} subtitle={workout.description} />
         {workout.instructors?.map(i => <Pressable key={i.id} onPress={() => openInstructor(i.id)} style={styles.personRow}><OrbitImage source={artwork(i)} style={styles.personImageSmall} /><Text style={styles.cardTitle}>{i.name}</Text></Pressable>)}
         {!!workout.studio && <Button secondary label={workout.studio.name} onPress={() => openStudio(workout.studioId)} />}
-        <Button label="Start session ▶" onPress={() => setNotice('Session playback is simulated.')} />
+        <Button label="Start session ▶" onPress={() => setNotice('Video playback is a preview — full session content will be available after beta.')} />
         {!!workout.products?.[0] && <Pressable accessibilityRole="button" accessibilityLabel="Shop this studio edit" onPress={() => navigate('productTag')} style={styles.editCard}><Text style={styles.label}>MOVEACTIVE EDIT</Text><View style={styles.tagProduct}><OrbitImage source={artwork(workout.products[0])} style={styles.tagImage} /><View style={styles.flex1}><Text style={styles.cardTitle}>Shop this studio edit</Text><Text style={styles.meta}>{workout.products[0].title}</Text></View><Text style={styles.chevron}>›</Text></View></Pressable>}
         <SectionTitle title="More ways to move" />{workoutCards(workouts.filter(value => value.id !== workout.id))}
       </ScrollView>;
