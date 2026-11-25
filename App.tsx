@@ -257,22 +257,22 @@ function App() {
         {(search.trim() ? studios : studios.slice(0, 1)).map(value => <StudioCard key={value.id} studio={value} onPress={() => openStudio(value.id)} />)}
         {workoutCards(search.trim() ? workouts : workouts.slice(0, 1))}
         {!!primaryWorkout?.instructors?.[0] && <Pressable accessibilityRole="button" onPress={() => openInstructor(primaryWorkout.instructors![0].id)} style={styles.recommendCard}><Text style={styles.cardTitle}>✓ Recommended by {primaryWorkout.instructors[0].name}</Text><Text style={styles.meta}>{primaryWorkout.studio?.name} · Studio connection</Text></Pressable>}
-        <TextInput accessibilityLabel="Search studios, classes, instructors" value={search} onChangeText={setSearch} placeholder="Search studios, classes, instructors" maxLength={100} style={styles.formInput} />
+        <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search studios, classes, instructors" value={search} onChangeText={setSearch} placeholder="Search studios, classes, instructors" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
         <SectionTitle title="Your Pilates world" action="Studio directory" onPress={() => goTab('studios')} />
         <Button secondary label="Explore all sessions" onPress={() => goTab('move')} />
         {offers.map(o => <Pressable key={o.id} style={styles.recommendCard} onPress={() => openStudio(o.studio.id)}><View style={styles.flex1}><Text style={styles.cardTitle}>{o.title}</Text><Text style={styles.meta}>{o.studio.name} · {o.distanceKm} km · {o.description}</Text></View></Pressable>)}
       </ScrollView>;
       case 'move': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>MOVE WITH US</Text><Heading title="Make time to move." subtitle="Find a session for your practice, your pace and your day." />
-        <TextInput accessibilityLabel="Search sessions" value={search} onChangeText={setSearch} placeholder="Search sessions or instructors" maxLength={100} style={styles.formInput} />
-        <View style={styles.chipRow}>{(config?.formats ?? []).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat Pilates'} active={format === f} onPress={() => setFormat(f)} />)}<Chip label="Beginner" active={level === 'beginner'} onPress={() => setLevel(level ? '' : 'beginner')} /></View>
+        <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search sessions" value={search} onChangeText={setSearch} placeholder="Search sessions or instructors" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
+        <View style={[styles.chipRow, { marginTop: 4 }]}>{(config?.formats ?? []).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat Pilates'} active={format === f} onPress={() => setFormat(f)} />)}<Chip label="Beginner" active={level === 'beginner'} onPress={() => setLevel(level ? '' : 'beginner')} /></View>
         {workoutCards(workouts)}<Button secondary label="Explore premium membership" onPress={() => navigate('membership')} />
       </ScrollView>;
       case 'membership': return <MembershipScreen onExplore={() => goTab('move')} />;
       case 'productTag': return workout && <ProductTagScreen key={workout.id} workout={workout} busy={busy} event={config?.eventConcept} onProduct={openProduct} onAdd={addTaggedProduct} onKeepExploring={back} onMap={openMap} onStudio={openStudio} />;
       case 'studios': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>STUDIO DIRECTORY</Text><Heading title="Find your studio." subtitle="Discover local Pilates spaces and the people who move with them." />
-        <TextInput accessibilityLabel="Search studios" value={search} onChangeText={setSearch} placeholder="Search studio name or area" style={styles.formInput} />
+        <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search studios" value={search} onChangeText={setSearch} placeholder="Search studio name or area" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
         <View style={styles.chipRow}><Chip label={nearMe ? `${session?.profile?.area ?? 'Melbourne'} · 10 km` : 'All areas'} active={nearMe} onPress={() => setNearMe(!nearMe)} />{(config?.formats ?? []).map(f => <Chip key={f} label={f} active={format === f} onPress={() => setFormat(f)} />)}</View>
         <Text style={styles.resultCount}>{studios.length} MATCHING STUDIOS</Text>{studios.map(s => <StudioCard key={s.id} studio={s} onPress={() => openStudio(s.id)} />)}{!studios.length && noResults('No studios match your search. Try another format or all areas.')}
       </ScrollView>;
@@ -301,7 +301,7 @@ function App() {
       </ScrollView>;
       case 'shop': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>MOVEACTIVE STORE · D2C</Text><Heading title="Made for every move." subtitle="Studio favourites and thoughtful essentials for your practice." />
-        <TextInput accessibilityLabel="Search products" value={search} onChangeText={setSearch} placeholder="Search grip socks, mats and equipment" style={styles.formInput} />
+        <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search products" value={search} onChangeText={setSearch} placeholder="Search grip socks, mats and equipment" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
         <View style={styles.chipRow}><Chip label="All" active={!collection} onPress={() => setCollection('')} />{collections.map(c => <Chip key={c} label={c.replace(/-/g, ' ')} active={collection === c} onPress={() => setCollection(c)} />)}</View>
         <View style={styles.collectionHero}><Photo uri={artwork({ imageUrl: config?.shopHeroImageUrl })} height={150} /><View style={styles.collectionCopy}><Text style={styles.sectionTitle}>The studio edit</Text><Text style={styles.meta}>Your next studio favourites</Text></View></View>
         <SectionTitle title="The studio edit" action={`View bag (${bagCount})`} onPress={() => navigate('bag')} />{productCards(products)}{!products.length && noResults('No products match your search or collection.')}

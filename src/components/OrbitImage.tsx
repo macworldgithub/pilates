@@ -23,3 +23,7 @@ const styles = StyleSheet.create({
   fallback: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', padding: 4 },
   icon: { color: '#8c8986', fontSize: 20 }, label: { color: '#77736f', fontSize: 9, textAlign: 'center' },
 });
+
+
+
+
