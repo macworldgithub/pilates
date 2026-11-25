@@ -17,8 +17,9 @@ function App() {
   const [screen, setScreen] = useState<Screen>('staffLogin');
   const [tab, setTab] = useState<Screen>('discover');
   const [session, setSession] = useState<Session>();
-  const [format, setFormat] = useState<Format>('reformer');
-  const [level, setLevel] = useState('');
+  const [selectedFormats, setSelectedFormats] = useState<Format[]>([]);
+  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [discountApplied, setDiscountApplied] = useState(false);
   const [nearMe, setNearMe] = useState(true);
@@ -27,12 +28,23 @@ function App() {
   const [config, setConfig] = useState<AppConfig>();
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [search, setSearch] = useState('');
-  const [collection, setCollection] = useState('');
   const [collections, setCollections] = useState<string[]>([]);
   const [studios, setStudios] = useState<Studio[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
+
+  const toggleFormat = (f: Format) => {
+    setSelectedFormats(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+  };
+  const toggleLevel = (lvl: string) => {
+    if (!lvl) { setSelectedLevels([]); return; }
+    setSelectedLevels(prev => prev.includes(lvl) ? prev.filter(x => x !== lvl) : [...prev, lvl]);
+  };
+  const toggleCollection = (col: string) => {
+    if (!col) { setSelectedCollections([]); return; }
+    setSelectedCollections(prev => prev.includes(col) ? prev.filter(x => x !== col) : [...prev, col]);
+  };
   const [access, setAccess] = useState<'staff' | 'admin'>();
   const [loginRole, setLoginRole] = useState<'staff' | 'admin'>('staff');
   const [adminVersion, setAdminVersion] = useState(0);
@@ -91,7 +103,7 @@ function App() {
       if (restored.profile?.latitude !== undefined && restored.profile.longitude !== undefined) {
         setArea({ area: restored.profile.area ?? 'Selected area', latitude: restored.profile.latitude, longitude: restored.profile.longitude });
       }
-      if (restored.profile?.formats?.[0]) { setFormat(restored.profile.formats[0]); }
+      if (restored.profile?.formats?.length) { setSelectedFormats(restored.profile.formats); }
       setInterest(restored.profile?.interests?.[0] ?? settings.interestOptions[0]?.value ?? '');
       return restored;
     } catch (reason) { reportError(reason); }
@@ -123,20 +135,43 @@ function App() {
     if (!location) { return; }
     const geoQuery = nearMe ? { latitude: location.latitude, longitude: location.longitude, radiusKm: 10, sort: 'nearest' } : {};
     const [s, w, p, o, connections, bag, history] = await Promise.all([
-      ['discover', 'studios'].includes(screen) ? api.studios({ limit: 100, format, ...geoQuery, search }) : null,
-      ['discover', 'move'].includes(screen) ? api.workouts({ limit: 100, format, level, search }) : null,
-      screen === 'shop' ? api.products({ limit: 100, collection, search }) : null,
+      ['discover', 'studios'].includes(screen) ? api.studios({ limit: 100, ...geoQuery, search }) : null,
+      ['discover', 'move'].includes(screen) ? api.workouts({ limit: 100, search }) : null,
+      screen === 'shop' ? api.products({ limit: 100, search }) : null,
       screen === 'discover' ? api.offers(nearMe ? { latitude: location.latitude, longitude: location.longitude } : {}) : null,
       screen === 'you' ? api.referrals() : null,
       screen === 'bag' ? api.cart() : null,
       screen === 'you' ? api.orders() : null,
     ]);
     if (version === listVersion.current) {
-      if (s) { setStudios(s.data); } if (w) { setWorkouts(w.data); } if (p) { setProducts(p.data); }
-      if (o) { setOffers(o.data); } if (connections) { setReferrals(connections.data); }
-      if (bag) { setCart(bag); } if (history) { setOrders(history.data); }
+      if (s) {
+        const filteredStudios = selectedFormats.length > 0
+          ? s.data.filter(item => item.formats.some(f => selectedFormats.includes(f as Format)))
+          : s.data;
+        setStudios(filteredStudios);
+      }
+      if (w) {
+        let filteredWorkouts = w.data;
+        if (selectedFormats.length > 0) {
+          filteredWorkouts = filteredWorkouts.filter(item => selectedFormats.includes(item.format as Format));
+        }
+        if (selectedLevels.length > 0) {
+          filteredWorkouts = filteredWorkouts.filter(item => selectedLevels.includes(item.level));
+        }
+        setWorkouts(filteredWorkouts);
+      }
+      if (p) {
+        const filteredProducts = selectedCollections.length > 0
+          ? p.data.filter(item => selectedCollections.includes(item.collection))
+          : p.data;
+        setProducts(filteredProducts);
+      }
+      if (o) { setOffers(o.data); }
+      if (connections) { setReferrals(connections.data); }
+      if (bag) { setCart(bag); }
+      if (history) { setOrders(history.data); }
     }
-  }, [format, level, nearMe, search, collection, session?.profile?.latitude, session?.profile?.longitude, screen, area]);
+  }, [selectedFormats, selectedLevels, nearMe, search, selectedCollections, session?.profile?.latitude, session?.profile?.longitude, screen, area]);
   useEffect(() => {
     if (!sessionId || !access || !['discover', 'move', 'studios', 'shop', 'you', 'bag'].includes(screen)) { return; }
     const timer = setTimeout(() => {
@@ -149,21 +184,15 @@ function App() {
   const navigate = (next: Screen) => { navigationHistory.current.push(screen); setScreen(next); };
   const goTab = (next: Screen) => { navigationHistory.current = []; setTab(next); setScreen(next); setSearch(''); setNotice(''); setFiltersOpen(false); };
   const back = useCallback(() => {
-    if (screen === 'staffLogin' || screen === 'onboarding') { return; }
-    if (screen === 'admin') {
-      navigationHistory.current = [];
-      setTab('discover');
-      setScreen(session?.profile?.onboardingComplete ? 'discover' : 'onboarding');
-      return;
-    }
+    if (screen === 'staffLogin' || screen === 'admin' || screen === 'onboarding') { return; }
     const previous = navigationHistory.current.pop();
     if (previous) { setScreen(previous); return; }
-    const destinations: Partial<Record<Screen, Screen>> = { studio: 'studios', instructor: studio ? 'studio' : 'discover', session: 'discover', product: 'shop', bag: 'shop', checkout: 'bag', order: 'you', productTag: 'session', membership: 'you', referral: 'you', admin: 'you', staffLogin: session?.profile?.onboardingComplete ? 'you' : 'onboarding' };
+    const destinations: Partial<Record<Screen, Screen>> = { studio: 'studios', instructor: studio ? 'studio' : 'discover', session: 'discover', product: 'shop', bag: 'shop', checkout: 'bag', order: 'you', productTag: 'session', membership: 'you', referral: 'you', staffLogin: session?.profile?.onboardingComplete ? 'you' : 'onboarding' };
     setScreen(screen === 'session' ? (tab === 'move' ? 'move' : 'discover') : destinations[screen] ?? tab);
   }, [screen, studio, tab, session?.profile?.onboardingComplete]);
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (['staffLogin', 'onboarding', 'discover', 'move', 'studios', 'shop', 'you'].includes(screen)) { return false; }
+      if (['staffLogin', 'admin', 'onboarding', 'discover', 'move', 'studios', 'shop', 'you'].includes(screen)) { return false; }
       back(); return true;
     });
     return () => listener.remove();
@@ -188,8 +217,10 @@ function App() {
     setCart(next < 1 ? await api.removeItem(item.productId, item.variantId) : await api.putItem(item.productId, item.variantId, next)); invalidateCheckout();
   });
   const checkoutInput = (): CheckoutInput => {
-    const code = discountCode.trim().toUpperCase();
-    if (code && code !== 'WELCOME15' && code !== 'SEASON10') { throw new Error('Use WELCOME15 or SEASON10 for a demo discount. Referral codes are applied from Studio connection.'); }
+    let code = discountCode.trim().toUpperCase();
+    if (code && code !== 'WELCOME15' && code !== 'SEASON10') {
+      code = code.includes('10') ? 'SEASON10' : 'WELCOME15';
+    }
     return { fulfillment, source: 'app', ...(code ? { discountCode: code } : {}) } as CheckoutInput;
   };
   const prepareCheckout = () => task(async () => {
@@ -212,7 +243,20 @@ function App() {
     if (connection) { await api.applyReferral(connection.code); setSession(old => old ? { ...old, referralCode: connection.code } : old); }
     setCart(await api.putItem(value.id, selectedId, previous + 1)); invalidateCheckout(); navigate('bag');
   });
-  const applyDiscount = () => task(async () => { const next = await api.quote(checkoutInput()); setQuote(next); setDiscountApplied(true); setNotice('Demo discount applied'); });
+  const applyDiscount = () => task(async () => {
+    const next = await api.quote(checkoutInput());
+    setQuote(next);
+    setDiscountApplied(true);
+    setNotice(`Demo discount applied — saved ${money(next.discount, next.currency)}!`);
+  });
+  const applyDemoCode = (code: string) => task(async () => {
+    setDiscountCode(code);
+    const input: CheckoutInput = { fulfillment, source: 'app', discountCode: code } as CheckoutInput;
+    const next = await api.quote(input);
+    setQuote(next);
+    setDiscountApplied(true);
+    setNotice(`Demo discount ${code} applied — saved ${money(next.discount, next.currency)}!`);
+  });
   const primaryStudio = studios[0];
   const primaryWorkout = workouts[0];
   const selectedVariant = product?.variants.find(v => v.id === variantId);
@@ -231,8 +275,13 @@ function App() {
         <Text style={styles.eyebrow}>MOVEACTIVE · INTERNAL PLAYTEST</Text>
         <Heading title="Welcome to Project Orbit" subtitle="Sign in as staff to explore, or as admin to manage studios and instructors." />
         <View style={styles.chipRow}>{(['staff', 'admin'] as const).map(role => <Chip key={role} label={role === 'staff' ? 'Staff' : 'Admin'} active={loginRole === role} onPress={() => { setLoginRole(role); setStaffUsername(role); setStaffPassword(''); setError(''); }} />)}</View>
-        <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff username' : 'Admin username'} value={staffUsername} onChangeText={setStaffUsername} autoCapitalize="none" autoCorrect={false} placeholder="Username" style={styles.formInput} />
-        <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff password' : 'Admin password'} value={staffPassword} onChangeText={setStaffPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Enter your password" placeholderTextColor="#9e9994" style={styles.formInput} />
+        <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff username' : 'Admin username'} value={staffUsername} onChangeText={v => { setStaffUsername(v); setError(''); }} autoCapitalize="none" autoCorrect={false} placeholder="Username" placeholderTextColor="#9e9994" style={styles.formInput} />
+        <TextInput accessibilityLabel={loginRole === 'staff' ? 'Staff password' : 'Admin password'} value={staffPassword} onChangeText={v => { setStaffPassword(v); setError(''); }} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder="Enter your password" placeholderTextColor="#9e9994" style={styles.formInput} />
+        {!!error && (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorCardText}>⚠️ {error}</Text>
+          </View>
+        )}
         <Button label={loginRole === 'staff' ? 'Sign in as staff' : 'Log in'} disabled={pending > 0 || !staffUsername.trim() || !staffPassword} onPress={() => task(async () => {
           if (loginRole === 'admin') {
             await api.adminLogin(staffUsername.trim(), staffPassword); setAccess('admin'); setScreen('admin');
@@ -251,16 +300,30 @@ function App() {
         <OrbitImage source={artwork({ imageUrl: config?.heroImageUrl })} style={styles.onboardHero} imageStyle={styles.onboardImage}><View style={styles.onboardShade} /><View style={styles.onboardCopy}><Text style={styles.onboardEyebrow}>YOUR PILATES WORLD</Text><Text style={styles.onboardTitle}>Find your next move.</Text><Text style={styles.onboardSub}>Fresh sessions. Studios you’ll love. Made for the way you move.</Text></View></OrbitImage>
         <View style={styles.onboardBody}><Text style={styles.sectionTitle}>Let’s make it yours</Text><Text style={styles.label}>YOUR AREA</Text><View style={styles.locationField}><Text style={styles.locationText}>{area?.area}</Text></View><View style={styles.chipRow}>{(config?.areas ?? []).map(a => <Chip key={a.area} label={a.area} active={area?.area === a.area} onPress={() => setArea(a)} />)}</View><Text style={styles.finePrint}>Choose a sample area for internal playtesting. Device location is not requested.</Text>
           <Text style={[styles.label, styles.interestLabel]}>WHAT DO YOU LOVE?</Text><View style={styles.chipRow}>{(config?.interestOptions ?? []).map(i => <Chip key={i.value} label={i.label} active={interest === i.value} onPress={() => setInterest(i.value)} />)}</View>
-          <View style={styles.chipRow}>{(config?.formats ?? []).map(f => <Chip key={f} label={f === 'mat' ? 'Mat Pilates' : 'Reformer'} active={format === f} onPress={() => setFormat(f)} />)}</View>
-          <Button label="Build my Pilates world →" disabled={busy || !session || !area || !interest} onPress={() => task(async () => { setSession(await api.profile({ ...area, interests: [interest], formats: [format], onboardingComplete: true })); setScreen('discover'); setTab('discover'); })} />
+          <View style={styles.chipRow}>{(config?.formats ?? ['reformer', 'mat']).map(f => <Chip key={f} label={f === 'mat' ? 'Mat Pilates' : 'Reformer'} active={selectedFormats.includes(f)} onPress={() => toggleFormat(f)} />)}</View>
+          <Button label="Build my Pilates world →" disabled={busy || !session || !area || !interest} onPress={() => task(async () => { setSession(await api.profile({ ...area, interests: [interest], formats: selectedFormats.length ? selectedFormats : ['reformer'], onboardingComplete: true })); setScreen('discover'); setTab('discover'); })} />
           <Button secondary label="Sign out" disabled={busy} onPress={signOut} />
         </View>
       </ScrollView>;
       case 'discover': return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>GOOD MORNING, MOVER</Text><Heading title="Find your next move." />
         <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search studios, classes, instructors" value={search} onChangeText={setSearch} placeholder="Search studios, classes, instructors" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
-        <View style={[styles.chipRow, { marginTop: 4 }]}><Chip label="Near me" active={nearMe} onPress={() => setNearMe(!nearMe)} />{(config?.formats ?? []).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat'} active={format === f} onPress={() => setFormat(f)} />)}<Chip label="Beginner" active={level === 'beginner'} onPress={() => setLevel(level ? '' : 'beginner')} /><Chip label="Filters ☷" active={filtersOpen} onPress={() => setFiltersOpen(!filtersOpen)} /></View>
-        {filtersOpen && <View style={styles.infoBox}><Text style={styles.label}>SESSION LEVEL</Text><View style={styles.chipRow}>{['', 'beginner', 'intermediate', 'advanced'].map(value => <Chip key={value} label={value || 'All levels'} active={level === value} onPress={() => setLevel(value)} />)}</View><Button secondary small label="Browse studio directory" onPress={() => goTab('studios')} /></View>}
+        <View style={[styles.chipRow, { marginTop: 4 }]}>
+          <Chip label="Near me" active={nearMe} onPress={() => setNearMe(!nearMe)} />
+          {(config?.formats ?? ['reformer', 'mat']).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat'} active={selectedFormats.includes(f)} onPress={() => toggleFormat(f)} />)}
+          <Chip label="Beginner" active={selectedLevels.includes('beginner')} onPress={() => toggleLevel('beginner')} />
+          <Chip label={selectedFormats.length > 0 || selectedLevels.length > 0 ? `Filters (${selectedFormats.length + selectedLevels.length}) ☷` : 'Filters ☷'} active={filtersOpen} onPress={() => setFiltersOpen(!filtersOpen)} />
+        </View>
+        {filtersOpen && <View style={styles.infoBox}>
+          <Text style={styles.label}>FORMAT (SELECT ONE OR MULTIPLE)</Text>
+          <View style={styles.chipRow}>{(config?.formats ?? ['reformer', 'mat']).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat'} active={selectedFormats.includes(f)} onPress={() => toggleFormat(f)} />)}</View>
+          <Text style={styles.label}>SESSION LEVEL (SELECT ONE OR MULTIPLE)</Text>
+          <View style={styles.chipRow}>{['beginner', 'intermediate', 'advanced'].map(value => <Chip key={value} label={value.charAt(0).toUpperCase() + value.slice(1)} active={selectedLevels.includes(value)} onPress={() => toggleLevel(value)} />)}</View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            {(selectedFormats.length > 0 || selectedLevels.length > 0) && <Button small secondary label="Clear all filters" onPress={() => { setSelectedFormats([]); setSelectedLevels([]); }} />}
+            <Button secondary small label="Browse studio directory" onPress={() => goTab('studios')} />
+          </View>
+        </View>}
         {(search.trim() ? studios : studios.slice(0, 1)).map(value => <StudioCard key={value.id} studio={value} onPress={() => openStudio(value.id)} />)}
         {workoutCards(search.trim() ? workouts : workouts.slice(0, 1))}
         {!!primaryWorkout?.instructors?.[0] && <Pressable accessibilityRole="button" onPress={() => openInstructor(primaryWorkout.instructors![0].id)} style={styles.recommendCard}><Text style={styles.cardTitle}>✓ Recommended by {primaryWorkout.instructors[0].name}</Text><Text style={styles.meta}>{primaryWorkout.studio?.name} · Studio connection</Text></Pressable>}
@@ -271,7 +334,11 @@ function App() {
       case 'move': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>MOVE WITH US</Text><Heading title="Make time to move." subtitle="Find a session for your practice, your pace and your day." />
         <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search sessions" value={search} onChangeText={setSearch} placeholder="Search sessions or instructors" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
-        <View style={[styles.chipRow, { marginTop: 4 }]}>{(config?.formats ?? []).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat Pilates'} active={format === f} onPress={() => setFormat(f)} />)}<Chip label="Beginner" active={level === 'beginner'} onPress={() => setLevel(level ? '' : 'beginner')} /></View>
+        <View style={[styles.chipRow, { marginTop: 4 }]}>
+          {(config?.formats ?? ['reformer', 'mat']).map(f => <Chip key={f} label={f === 'reformer' ? 'Reformer' : 'Mat Pilates'} active={selectedFormats.includes(f)} onPress={() => toggleFormat(f)} />)}
+          {['beginner', 'intermediate', 'advanced'].map(lvl => <Chip key={lvl} label={lvl.charAt(0).toUpperCase() + lvl.slice(1)} active={selectedLevels.includes(lvl)} onPress={() => toggleLevel(lvl)} />)}
+          {(selectedFormats.length > 0 || selectedLevels.length > 0) && <Chip label="Clear filters ✕" active onPress={() => { setSelectedFormats([]); setSelectedLevels([]); }} />}
+        </View>
         {workoutCards(workouts)}<Button secondary label="Explore premium membership" onPress={() => navigate('membership')} />
       </ScrollView>;
       case 'membership': return <MembershipScreen onExplore={() => goTab('move')} />;
@@ -279,8 +346,12 @@ function App() {
       case 'studios': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>STUDIO DIRECTORY</Text><Heading title="Find your studio." subtitle="Discover local Pilates spaces and the people who move with them." />
         <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search studios" value={search} onChangeText={setSearch} placeholder="Search studio name or area" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
-        <View style={styles.chipRow}><Chip label={nearMe ? `${session?.profile?.area ?? 'Melbourne'} · 10 km` : 'All areas'} active={nearMe} onPress={() => setNearMe(!nearMe)} />{(config?.formats ?? []).map(f => <Chip key={f} label={f} active={format === f} onPress={() => setFormat(f)} />)}</View>
-        <Text style={styles.resultCount}>{studios.length} MATCHING STUDIOS</Text>{studios.map(s => <StudioCard key={s.id} studio={s} onPress={() => openStudio(s.id)} />)}{!studios.length && noResults('No studios match your search. Try another format or all areas.')}
+        <View style={styles.chipRow}>
+          <Chip label={nearMe ? `${session?.profile?.area ?? 'Melbourne'} · 10 km` : 'All areas'} active={nearMe} onPress={() => setNearMe(!nearMe)} />
+          {(config?.formats ?? ['reformer', 'mat']).map(f => <Chip key={f} label={f.charAt(0).toUpperCase() + f.slice(1)} active={selectedFormats.includes(f)} onPress={() => toggleFormat(f)} />)}
+          {selectedFormats.length > 0 && <Chip label="All formats ✕" active onPress={() => setSelectedFormats([])} />}
+        </View>
+        <Text style={styles.resultCount}>{studios.length} MATCHING STUDIOS</Text>{studios.map(s => <StudioCard key={s.id} studio={s} onPress={() => openStudio(s.id)} />)}{!studios.length && noResults('No studios match your search or filters. Try removing filters or toggling areas.')}
       </ScrollView>;
       case 'studio': return studio && <ScrollView contentContainerStyle={styles.content}>
         <Photo uri={artwork(studio)} height={225} radius={0} /><Heading title={studio.name} subtitle={studio.address} /><View style={styles.chipRow}>{studio.formats.map(f => <Chip key={f} label={f} active />)}</View>
@@ -308,7 +379,11 @@ function App() {
       case 'shop': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>MOVEACTIVE STORE · D2C</Text><Heading title="Made for every move." subtitle="Studio favourites and thoughtful essentials for your practice." />
         <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search products" value={search} onChangeText={setSearch} placeholder="Search grip socks, mats and equipment" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
-        <View style={styles.chipRow}><Chip label="All" active={!collection} onPress={() => setCollection('')} />{collections.map(c => <Chip key={c} label={c.replace(/-/g, ' ')} active={collection === c} onPress={() => setCollection(c)} />)}</View>
+        <View style={styles.chipRow}>
+          <Chip label="All" active={selectedCollections.length === 0} onPress={() => setSelectedCollections([])} />
+          {collections.map(c => <Chip key={c} label={c.replace(/-/g, ' ')} active={selectedCollections.includes(c)} onPress={() => toggleCollection(c)} />)}
+          {selectedCollections.length > 0 && <Chip label="Clear ✕" active onPress={() => setSelectedCollections([])} />}
+        </View>
         <View style={styles.collectionHero}><Photo uri={artwork({ imageUrl: config?.shopHeroImageUrl })} height={150} /><View style={styles.collectionCopy}><Text style={styles.sectionTitle}>The studio edit</Text><Text style={styles.meta}>Your next studio favourites</Text></View></View>
         <SectionTitle title="The studio edit" action={`View bag (${bagCount})`} onPress={() => navigate('bag')} />{productCards(products)}{!products.length && noResults('No products match your search or collection.')}
         <Text style={styles.finePrint}>Sample catalog and availability · no live inventory.</Text>
@@ -331,7 +406,33 @@ function App() {
         {cart.items.map(item => <View key={`${item.productId}/${item.variantId}`} style={styles.cartItem}><OrbitImage source={artwork({ id: item.productId, imageUrl: item.imageUrl })} style={styles.cartPhoto} /><View style={styles.flex1}><Text style={styles.cardTitle}>{item.productTitle}</Text><Text style={styles.meta}>{item.variantTitle}{item.available ? '' : ' · Unavailable'}</Text><View style={styles.stepper}><Pressable disabled={busy} onPress={() => changeCart(item, item.quantity - 1)}><Text style={styles.stepperText}>−</Text></Pressable><Text style={styles.qty}>{item.quantity}</Text><Pressable disabled={busy || item.quantity === 99 || !item.available} onPress={() => changeCart(item, item.quantity + 1)}><Text style={styles.stepperText}>＋</Text></Pressable></View><Pressable disabled={busy} onPress={() => changeCart(item, 0)}><Text style={styles.inlineLink}>Remove</Text></Pressable></View><Text style={styles.meta}>{money(item.lineTotal, item.currency ?? 'AUD')}</Text></View>)}
         {!!cart.items.length && <Button secondary label="Clear bag" disabled={busy} onPress={() => task(async () => { setCart(await api.clearCart()); invalidateCheckout(); })} />}
         {!cart.items.length && noResults('Your bag is taking a breather. Explore studio essentials picked for your practice.')}
-        <View style={styles.codeBox}><Text style={styles.cardTitle}>Have a demo discount?</Text><TextInput accessibilityLabel="Discount code" value={discountCode} onChangeText={value => { setDiscountCode(value); invalidateCheckout(); }} autoCapitalize="characters" placeholder="WELCOME15 or SEASON10" style={styles.codeInput} /><Button small secondary label="Apply code" disabled={busy || !cart.checkoutReady || !discountCode.trim()} onPress={applyDiscount} /><Text style={styles.finePrint}>Referral codes are applied from Studio connection. They do not provide a discount.</Text></View>
+        <View style={styles.codeBox}>
+          <Text style={styles.cardTitle}>Have a demo discount?</Text>
+          <Text style={styles.meta}>Tap a code to apply discount, or type one below:</Text>
+          <View style={[styles.chipRow, { marginTop: 8, marginBottom: 8 }]}>
+            <Chip
+              label="WELCOME15 · 15% OFF"
+              active={discountCode.trim().toUpperCase() === 'WELCOME15'}
+              onPress={() => applyDemoCode('WELCOME15')}
+            />
+            <Chip
+              label="SEASON10 · 10% OFF"
+              active={discountCode.trim().toUpperCase() === 'SEASON10'}
+              onPress={() => applyDemoCode('SEASON10')}
+            />
+          </View>
+          <TextInput accessibilityLabel="Discount code" value={discountCode} onChangeText={value => { setDiscountCode(value); invalidateCheckout(); }} autoCapitalize="characters" placeholder="WELCOME15 or SEASON10" placeholderTextColor="#9e9994" style={styles.codeInput} />
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <Button small secondary label="Apply code" disabled={busy || !cart.checkoutReady || !discountCode.trim()} onPress={applyDiscount} />
+            {discountApplied && <Button small secondary label="Remove discount" disabled={busy} onPress={() => { setDiscountCode(''); invalidateCheckout(); setNotice('Discount removed'); }} />}
+          </View>
+          {discountApplied && quote && quote.discount > 0 && (
+            <View style={{ backgroundColor: '#e8f1e9', padding: 8, borderRadius: 8, marginTop: 10 }}>
+              <Text style={{ color: '#4d7964', fontSize: 11, fontWeight: '700' }}>✓ {discountCode.toUpperCase()} applied — saved {money(quote.discount, quote.currency)}!</Text>
+            </View>
+          )}
+          <Text style={styles.finePrint}>Referral codes are applied from Studio connection. They do not provide a discount.</Text>
+        </View>
         <Text style={styles.label}>FULFILLMENT</Text><View style={styles.chipRow}>{(['delivery', 'warehouse-collect'] as const).map(f => <Chip key={f} label={f === 'delivery' ? 'Delivery' : 'Warehouse collection'} active={fulfillment === f} onPress={() => { setFulfillment(f); invalidateCheckout(); }} />)}</View>
         {discountApplied && quote ? summary(quote) : <View style={styles.infoBox}><Text style={styles.sectionTitle}>Order summary</Text><View style={styles.summaryRow}><Text style={styles.bodyCopy}>Items subtotal</Text><Text style={styles.cardTitle}>{money(cart.subtotal, cart.currency ?? 'AUD')}</Text></View><View style={styles.summaryRow}><Text style={styles.bodyCopy}>Delivery & tax</Text><Text style={styles.meta}>At checkout</Text></View></View>}
         <Button label="Review demo checkout" disabled={busy || !cart.checkoutReady} onPress={prepareCheckout} /><Text style={styles.disclaimer}>Demo only · No payment is taken</Text><Button secondary label="Continue shopping" onPress={() => goTab('shop')} />
@@ -357,21 +458,20 @@ function App() {
         <Text style={styles.finePrint}>Demo attribution only. No commissions or payouts.</Text><Button label="Apply studio connection" disabled={busy} onPress={() => task(async () => { await api.applyReferral(referral.code); setSession(old => old ? { ...old, referralCode: referral.code } : old); invalidateCheckout(); setNotice('Studio connection applied to your next demo order.'); })} />
         <Button secondary label={`View ${referral.owner.name}`} onPress={() => referral.ownerType === 'studio' ? openStudio(referral.ownerId) : openInstructor(referral.ownerId)} />
       </ScrollView>;
-      case 'admin': return access === 'admin' && <AdminPanel key={adminVersion} task={task} busy={busy} onError={reportError} onChanged={async () => { invalidateLists(); }} onLogout={signOut} onPreview={() => task(async () => {
-        const current = session && config ? session : await bootstrap();
-        if (!current) { return; }
-        navigationHistory.current = []; setTab('discover'); setScreen(current.profile?.onboardingComplete ? 'discover' : 'onboarding');
-      })} />;
+      case 'admin': return access === 'admin' && <AdminPanel key={adminVersion} task={task} busy={busy} onError={reportError} onChanged={async () => { invalidateLists(); }} onLogout={signOut} />;
       default: return null;
     }
   };
   return <SafeAreaProvider><SafeAreaView style={styles.safe} edges={['top', 'right', 'bottom', 'left']}>
     <StatusBar barStyle="dark-content" />{!['onboarding', 'staffLogin', 'admin'].includes(screen) && <TopBar screen={screen} onBack={back} onYou={() => goTab('you')} />}
     {busy && <View accessibilityRole="progressbar" style={styles.chipRow}><ActivityIndicator /><Text style={styles.meta}>Connecting to your Pilates world…</Text></View>}
-    {!!error && <View accessibilityRole="alert" style={styles.noteCard}><Text style={styles.noteTitle}>{error}</Text><Button small secondary label={!session || screen === 'staffLogin' ? 'Retry connection' : 'Refresh'} onPress={() => {
-      if (screen === 'admin') { setError(''); setAdminVersion(n => n + 1); }
-      else if (!session || screen === 'staffLogin' || error.includes('expired')) { bootstrap(); }
-      else { task(async () => { if (!config) { await bootstrap(); } await Promise.all([reload(), loadSupport()]); }); }
+    {!!error && screen !== 'staffLogin' && <View accessibilityRole="alert" style={styles.noteCard}><Text style={styles.noteTitle}>{error}</Text><Button small secondary label={error.toLowerCase().includes('connect') || error.toLowerCase().includes('reach') ? 'Retry connection' : 'Dismiss'} onPress={() => {
+      if (error.toLowerCase().includes('connect') || error.toLowerCase().includes('reach')) {
+        if (!session || error.includes('expired')) { bootstrap(); }
+        else { task(async () => { if (!config) { await bootstrap(); } await Promise.all([reload(), loadSupport()]); }); }
+      } else {
+        setError('');
+      }
     }} /></View>}
     <View key={screen} style={styles.screen}>{access || screen === 'staffLogin' ? renderScreen() : null}</View>
     {['discover', 'move', 'studios', 'shop', 'you'].includes(screen) && <BottomNav screen={tab === 'studios' ? 'discover' : tab} bagCount={bagCount} onSelect={goTab} />}

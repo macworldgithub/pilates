@@ -7,8 +7,8 @@ import { artwork } from '../data/artwork';
 import { Button, Chip, Heading, styles } from './OrbitUI';
 
 type Kind = 'studios' | 'instructors' | 'affiliations';
-type Props = { task: (work: () => Promise<void>) => void; busy: boolean; onChanged: () => Promise<void>; onLogout: () => void; onPreview: () => void; onError: (reason: unknown) => void };
-export function AdminPanel({ task, busy: actionBusy, onChanged, onLogout, onPreview, onError }: Props) {
+type Props = { task: (work: () => Promise<void>) => void; busy: boolean; onChanged: () => Promise<void>; onLogout: () => void; onError: (reason: unknown) => void };
+export function AdminPanel({ task, busy: actionBusy, onChanged, onLogout, onError }: Props) {
   const [loading, setLoading] = useState(true);
   const busy = actionBusy || loading;
   const [kind, setKind] = useState<Kind>('studios');
@@ -88,7 +88,7 @@ export function AdminPanel({ task, busy: actionBusy, onChanged, onLogout, onPrev
 
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
     <View style={styles.adminHeader}>
-      <Button small secondary label="‹ Consumer App" disabled={busy} onPress={onPreview} />
+      <Text style={styles.eyebrow}>MOVEACTIVE · ADMIN PORTAL</Text>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Button small secondary label="Refresh" disabled={busy} onPress={() => task(load)} />
         <Button small secondary label="Log out" disabled={busy} onPress={onLogout} />
@@ -217,8 +217,7 @@ export function AdminPanel({ task, busy: actionBusy, onChanged, onLogout, onPrev
     </>}
 
     <View style={{ marginTop: 24, paddingBottom: 20 }}>
-      <Button secondary label="Preview consumer app" disabled={busy} onPress={onPreview} />
-      <Button secondary label="Log out" disabled={busy} onPress={onLogout} />
+      <Button secondary label="Log out of admin" disabled={busy} onPress={onLogout} />
     </View>
   </ScrollView>;
 }
