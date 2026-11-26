@@ -1,8 +1,5 @@
-import { Platform } from 'react-native';
-
 const deployedApiUrl = 'https://pilates-backend-sigma.vercel.app/api/v1';
-// Forward the development machine's port with adb reverse tcp:4000 tcp:4000.
-const androidLocalApiUrl = 'http://127.0.0.1:4000/api/v1';
 
-export const API_BASE_URL =
-  __DEV__ && Platform.OS === 'android' ? androidLocalApiUrl : deployedApiUrl;
+// The app is commonly run on a physical Android device, where 127.0.0.1 is
+// the phone itself. Use the hosted API for both development and release builds.
+export const API_BASE_URL = deployedApiUrl;

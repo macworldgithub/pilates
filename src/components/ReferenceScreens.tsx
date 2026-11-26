@@ -21,10 +21,25 @@ export function ProductGallery({ product }: { product: Product }) {
 
 export function DeliveryPreview() {
   const [values, setValues] = useState<Record<string, string>>({});
-  return <View style={styles.infoBox}>
-    <Text style={styles.sectionTitle}>Delivery details</Text>
-    {['Email address', 'Full name', 'Street address', 'Suburb', 'Postcode'].map(label => <TextInput key={label} accessibilityLabel={label} placeholder={label} value={values[label] ?? ''} onChangeText={value => setValues(old => ({ ...old, [label]: value }))} keyboardType={label === 'Email address' ? 'email-address' : label === 'Postcode' ? 'number-pad' : 'default'} autoCapitalize={label === 'Email address' ? 'none' : 'words'} autoCorrect={false} maxLength={label === 'Postcode' ? 10 : 200} style={styles.formInput} />)}
-    <Text style={styles.finePrint}>Example form only. These details stay on this screen and are not submitted. No delivery will be arranged.</Text>
+  const fields = ['Email address', 'Full name', 'Street address'];
+  const input = (label: string) => <TextInput
+    key={label}
+    accessibilityLabel={label}
+    placeholder={label}
+    placeholderTextColor="#8d8883"
+    value={values[label] ?? ''}
+    onChangeText={value => setValues(old => ({ ...old, [label]: value }))}
+    keyboardType={label === 'Email address' ? 'email-address' : label === 'Postcode' ? 'number-pad' : 'default'}
+    autoCapitalize={label === 'Email address' ? 'none' : 'words'}
+    autoCorrect={false}
+    maxLength={label === 'Postcode' ? 10 : 200}
+    style={[local.deliveryInput, (label === 'Suburb' || label === 'Postcode') && local.deliveryAddressInput]}
+  />;
+  return <View style={local.deliveryCard}>
+    <View style={local.deliveryHeading}><Text style={local.deliveryIcon}>▣</Text><Text style={local.deliveryTitle}>Delivery details</Text></View>
+    {fields.map(input)}
+    <View style={local.deliveryAddressRow}>{input('Suburb')}{input('Postcode')}</View>
+    <Text style={local.deliveryFinePrint}>Example form. No data is submitted.</Text>
   </View>;
 }
 
@@ -81,6 +96,12 @@ export function ProductTagScreen({ workout, busy, event, onProduct, onAdd, onKee
 }
 
 const local = StyleSheet.create({
+  deliveryCard: { backgroundColor: '#f5f5f4', borderRadius: 13, padding: 12, marginBottom: 10 },
+  deliveryHeading: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 5 },
+  deliveryIcon: { color: '#202020', fontSize: 12 }, deliveryTitle: { color: '#202020', fontSize: 11, fontWeight: '500' },
+  deliveryInput: { height: 39, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e4e2df', borderRadius: 5, paddingHorizontal: 9, paddingVertical: 0, marginTop: 5, color: '#202020', fontSize: 10 },
+  deliveryAddressRow: { flexDirection: 'row', gap: 5 }, deliveryAddressInput: { flex: 1 },
+  deliveryFinePrint: { color: '#96908b', fontSize: 8, lineHeight: 12, marginTop: 7 },
   productHero: { width: '100%', height: 300, borderRadius: 12, marginBottom: 10, backgroundColor: '#f5f2ed' },
   thumbnail: { borderWidth: 1, borderColor: '#e6e1da', padding: 3, borderRadius: 7 }, selected: { borderColor: '#202020' }, thumbImage: { width: 45, height: 45, borderRadius: 4 },
   membershipCard: { backgroundColor: '#dfecf2', borderRadius: 16, padding: 22, minHeight: 175, justifyContent: 'center' }, membershipTitle: { fontSize: 27, fontWeight: '700', color: '#202020', letterSpacing: -1, marginBottom: 10 },

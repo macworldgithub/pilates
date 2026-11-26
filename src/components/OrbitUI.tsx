@@ -14,9 +14,14 @@ const C = {
   sage: '#e9efea',
 };
 
-const Button = ({ label, onPress, secondary = false, small = false, disabled = false, tone }: { label: string; onPress: () => void; secondary?: boolean; small?: boolean; disabled?: boolean; tone?: 'pink' }) => (
-  <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={[styles.button, disabled && styles.buttonDisabled, secondary && styles.buttonSecondary, tone === 'pink' && styles.buttonPink, small && styles.buttonSmall]}>
-    <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText, small && styles.buttonTextSmall]}>{label}</Text>
+const Button = ({ label, onPress, secondary = false, small = false, prominent = false, disabled = false, tone, trailingIcon }: { label: string; onPress: () => void; secondary?: boolean; small?: boolean; prominent?: boolean; disabled?: boolean; tone?: 'pink'; trailingIcon?: string }) => (
+  <Pressable accessibilityRole="button" disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={[styles.button, disabled && styles.buttonDisabled, secondary && styles.buttonSecondary, tone === 'pink' && styles.buttonPink, small && styles.buttonSmall, prominent && styles.buttonProminent]}>
+    {prominent ? <View style={styles.buttonProminentContent}><Text style={[styles.buttonText, styles.buttonTextProminent, secondary && styles.buttonSecondaryText]}>{label}</Text></View> : <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText, small && styles.buttonTextSmall]}>{label}</Text>}
+    {!!trailingIcon && <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.buttonArrow}>
+      <View style={[styles.buttonArrowShaft, secondary && styles.buttonArrowDark]} />
+      <View style={[styles.buttonArrowHeadTop, secondary && styles.buttonArrowDark]} />
+      <View style={[styles.buttonArrowHeadBottom, secondary && styles.buttonArrowDark]} />
+    </View>}
   </Pressable>
 );
 
@@ -55,10 +60,10 @@ const ProductCard = ({ title, price, uri, onPress }: { title: string; price: str
 
 const TopBar = ({ screen, onBack, onYou }: { screen: Screen; onBack: () => void; onYou: () => void }) => (
   <View style={styles.topBar}>
-    {!['discover', 'move', 'studios', 'shop', 'you'].includes(screen) ? (
+    {!['discover', 'move', 'studios', 'shop', 'you', 'order'].includes(screen) ? (
       <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></Pressable>
     ) : <View style={styles.brandMark} />}
-    <Text style={[styles.brand, !['discover', 'move', 'studios', 'shop', 'you'].includes(screen) && styles.brandWithBack]}>Move<Text style={styles.brandLight}>Active</Text></Text>
+    <Text style={[styles.brand, !['discover', 'move', 'studios', 'shop', 'you', 'order'].includes(screen) && styles.brandWithBack]}>Move<Text style={styles.brandLight}>Active</Text></Text>
     <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={onYou} style={styles.avatar}><Text style={styles.avatarText}>A</Text></Pressable>
   </View>
 );
@@ -91,6 +96,20 @@ export const styles = StyleSheet.create({
   brand: { position: 'absolute', left: 20, color: C.ink, fontSize: 20, letterSpacing: -1.1, fontWeight: '600' },
   brandWithBack: { left: 54 },
   confirmationHero: { backgroundColor: '#f0f3ed', borderRadius: 12, padding: 24, alignItems: 'center', marginBottom: 14 },
+  successCard: { minHeight: 184, borderRadius: 9, paddingHorizontal: 16, paddingVertical: 15, marginBottom: 7, backgroundColor: '#f0f3ed', alignItems: 'center', justifyContent: 'center' },
+  successCheckCircle: { width: 42, height: 42, borderWidth: 1, borderColor: '#a6b5a2', borderRadius: 22, marginBottom: 13, alignItems: 'center', justifyContent: 'center' },
+  successCheckShort: { position: 'absolute', width: 7, height: 1.5, backgroundColor: C.ink, left: 13, top: 21, transform: [{ rotate: '45deg' }] },
+  successCheckLong: { position: 'absolute', width: 15, height: 1.5, backgroundColor: C.ink, left: 17, top: 19, transform: [{ rotate: '-48deg' }] },
+  successTitle: { color: C.ink, fontSize: 20, lineHeight: 23, fontWeight: '400', letterSpacing: -0.4, textAlign: 'center' },
+  successMeta: { color: '#71806f', fontSize: 8, lineHeight: 12, marginTop: 7, textAlign: 'center' },
+  successDescription: { color: C.muted, fontSize: 9, lineHeight: 14, marginBottom: 10 },
+  successConnection: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9, backgroundColor: '#f0f3ed', marginBottom: 14 },
+  successConnectionBadge: { width: 17, height: 17, borderWidth: 1, borderColor: '#788d75', borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  successConnectionCheck: { color: '#627b66', fontSize: 10, lineHeight: 12 },
+  successConnectionTitle: { color: C.ink, fontSize: 11, lineHeight: 15, fontWeight: '500' },
+  successConnectionMeta: { color: C.muted, fontSize: 9, lineHeight: 13, marginTop: 2 },
+  successActions: {},
+  successPrimaryAction: { marginBottom: 10 },
   brandLight: { fontWeight: '300' },
   avatar: { height: 29, width: 29, borderRadius: 15, backgroundColor: '#e8f0f3', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#394b53', fontWeight: '600', fontSize: 12 },
@@ -103,7 +122,7 @@ export const styles = StyleSheet.create({
   sectionTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11, marginTop: 7 }, sectionTitle: { fontSize: 17, fontWeight: '600', color: C.ink, letterSpacing: -0.3 }, link: { fontSize: 11, color: C.ink, fontWeight: '600' }, workoutCard: { borderWidth: 1, borderColor: C.line, borderRadius: 16, overflow: 'hidden', marginBottom: 14, backgroundColor: C.paper }, workoutPhoto: { height: 175, width: '100%', backgroundColor: C.sage }, workoutText: { padding: 12 }, play: { position: 'absolute', left: 13, bottom: 13, backgroundColor: '#f0dfe8', height: 31, width: 31, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, playIcon: { color: C.ink, fontSize: 11 }, duration: { position: 'absolute', right: 11, bottom: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(32,32,32,0.75)' }, durationText: { color: C.paper, fontSize: 9 }, recommendCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, backgroundColor: '#f0f3ed', marginBottom: 18, flexWrap: 'wrap' }, recommendIcon: { height: 31, width: 31, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: C.coralPale }, recommendIconText: { color: C.coral, fontSize: 16 },
   buttonPink: { backgroundColor: '#efdae5', borderColor: '#efdae5' },
   buttonDisabled: { opacity: 0.45 },
-  button: { height: 50, backgroundColor: C.ink, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginTop: 15, marginBottom: 6 }, buttonSecondary: { backgroundColor: C.paper, borderWidth: 1, borderColor: '#d9d4d0' }, buttonSmall: { height: 34, paddingHorizontal: 14, borderRadius: 18, marginTop: 0, marginBottom: 0 }, buttonText: { color: C.paper, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }, buttonSecondaryText: { color: C.ink }, buttonTextSmall: { fontSize: 9 },
+  button: { height: 50, backgroundColor: C.ink, borderRadius: 25, alignItems: 'center', justifyContent: 'center', marginTop: 15, marginBottom: 6 }, buttonSecondary: { backgroundColor: C.paper, borderWidth: 1, borderColor: '#d9d4d0' }, buttonSmall: { height: 34, paddingHorizontal: 14, borderRadius: 18, marginTop: 0, marginBottom: 0 }, buttonProminent: { height: 42, borderRadius: 22, marginTop: 0, marginBottom: 0 }, buttonText: { color: C.paper, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }, buttonSecondaryText: { color: C.ink }, buttonTextSmall: { fontSize: 9 }, buttonProminentContent: { width: '100%', height: '100%', justifyContent: 'center', paddingHorizontal: 14, paddingRight: 38 }, buttonTextProminent: { fontSize: 10, textAlign: 'left' }, buttonArrow: { position: 'absolute', right: 17, width: 18, height: 20 }, buttonArrowShaft: { position: 'absolute', left: 0, top: 9, width: 18, height: 2, backgroundColor: C.paper }, buttonArrowHeadTop: { position: 'absolute', left: 8, top: 6, width: 10, height: 2, backgroundColor: C.paper, transform: [{ rotate: '45deg' }] }, buttonArrowHeadBottom: { position: 'absolute', left: 8, bottom: 6, width: 10, height: 2, backgroundColor: C.paper, transform: [{ rotate: '-45deg' }] }, buttonArrowDark: { backgroundColor: C.ink },
   searchBox: { height: 45, borderRadius: 13, borderWidth: 1, borderColor: C.line, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 12 }, searchIcon: { color: '#88837e', fontSize: 22, marginRight: 7 }, searchInput: { flex: 1, paddingVertical: 0, color: C.ink, fontSize: 11 }, resultCount: { color: '#96908b', fontSize: 9, fontWeight: '700', letterSpacing: 1, marginVertical: 7 }, directoryRow: { borderTopWidth: 1, borderColor: C.line, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, mapCard: { marginTop: 17, height: 135, borderRadius: 18, backgroundColor: '#edf1ed', justifyContent: 'center', alignItems: 'center' }, mapPin: { fontSize: 27, color: '#6c8373' }, mapTitle: { fontSize: 13, color: C.ink, fontWeight: '600', marginTop: 5 },
   profileTitle: { paddingTop: 17, paddingBottom: 5 }, bodyCopy: { color: '#625e5a', fontSize: 12, lineHeight: 19, marginVertical: 9 }, infoBox: { borderWidth: 1, borderColor: C.line, borderRadius: 16, padding: 15, marginVertical: 10 }, personRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#f1eeeb' }, personImage: { width: 49, height: 49, borderRadius: 25, backgroundColor: C.sage }, personImageSmall: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.sage },
   instructorHero: { width: '100%', height: 285, borderRadius: 18, marginBottom: 21, backgroundColor: C.sage }, affiliation: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.canvas, borderRadius: 14, padding: 11, marginBottom: 14 }, affiliationMark: { width: 39, height: 39, borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#e0ebe8' }, affiliationMarkText: { color: '#587174', fontSize: 13, fontWeight: '700' }, referralCard: { backgroundColor: '#fcf5f2', borderRadius: 17, padding: 16, marginBottom: 20 }, codeRow: { marginTop: 9 }, code: { fontSize: 23, fontWeight: '700', letterSpacing: 3, color: C.ink }, simpleRow: { borderBottomWidth: 1, borderColor: C.line, paddingVertical: 14 },
