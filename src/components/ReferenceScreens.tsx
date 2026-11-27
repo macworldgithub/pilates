@@ -4,7 +4,8 @@ import type { AppConfig, Product, Studio, Workout } from '../api/types';
 import { money } from '../api/client';
 import { artwork } from '../data/artwork';
 import { OrbitImage } from './OrbitImage';
-import { Button, Chip, Heading, styles } from './OrbitUI';
+import { BagIcon, Button, Chip, Heading, RightArrowIcon, styles } from './OrbitUI';
+import { fallbackProduct, fallbackStudio } from '../data/fallbackData';
 
 export function ProductGallery({ product }: { product: Product }) {
   const photos = [...new Set([product.imageUrl, ...(product.imageUrls ?? [])].filter(Boolean))];
@@ -54,45 +55,131 @@ export function MembershipScreen({ onExplore }: { onExplore: () => void }) {
   </ScrollView>;
 }
 
-function MapPreview({ studio, onOpen }: { studio: Studio; onOpen: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={`Open map for ${studio.name}`} onPress={onOpen} style={local.map}>
-    <View style={local.roadOne} /><View style={local.roadTwo} />
-    <View style={local.mapPin}><Text style={local.pinText}>⌖</Text></View><View style={local.mapCaption}><Text style={styles.cardTitle}>{studio.name}</Text><Text style={styles.meta}>Map preview · Tap for directions</Text></View>
-  </Pressable>;
-}
-
 export function ProductTagScreen({ workout, busy, event, onProduct, onAdd, onKeepExploring, onMap, onStudio }: {
   workout: Workout; busy: boolean; event?: AppConfig['eventConcept'];
   onProduct: (id: string) => void; onAdd: (product: Product, variantId: string) => void;
   onKeepExploring: () => void; onMap: (studio: Studio) => void; onStudio: (id: string) => void;
 }) {
-  const items = workout.products ?? [];
+  const items = workout.products?.length ? workout.products : [fallbackProduct];
   const [selectedId, setSelectedId] = useState(items[0]?.id);
   const [variantId, setVariantId] = useState('');
-  const [eventOpen, setEventOpen] = useState(false);
   const selected = items.find(p => p.id === selectedId) ?? items[0];
-  const variant = selected?.variants.find(v => v.id === variantId) ?? selected?.variants.find(v => v.available);
+  const variant = selected?.variants.find(v => v.id === variantId) ?? selected?.variants.find(v => v.available) ?? selected?.variants[0];
   const instructor = workout.instructors?.[0];
-  return <ScrollView contentContainerStyle={styles.content}>
-    <Text style={styles.eyebrow}>WORN IN THIS SESSION</Text><Heading title={instructor ? `${instructor.name.split(' ')[0]}’s Pilates studio` : 'Your studio edit'} />
-    {items.length > 1 && <View style={styles.chipRow}>{items.map(p => <Chip key={p.id} label={p.collection.replace(/-/g, ' ')} active={selected?.id === p.id} onPress={() => { setSelectedId(p.id); setVariantId(''); }} />)}</View>}
-    {selected ? <>
-      <Pressable accessibilityRole="button" accessibilityLabel={`View ${selected.title}`} onPress={() => onProduct(selected.id)} style={local.tagCard}>
-        <OrbitImage source={artwork(selected)} style={local.tagPhoto} resizeMode="contain" /><View style={styles.flex1}><Text style={styles.label}>MOVEACTIVE EDIT</Text><Text style={styles.cardTitle}>{selected.title}</Text><Text style={styles.meta}>{money(variant?.price, selected.currency)} · View product ›</Text></View><Text style={styles.chevron}>♧</Text>
+  const studioName = workout.studio?.name ?? 'Core Collective';
+
+  return (
+    <ScrollView contentContainerStyle={styles.content}>
+      {/* 1. Eyebrow */}
+      <Text style={local.tagEyebrow}>WORN IN THIS SESSION</Text>
+
+      {/* 2. Heading */}
+      <Heading title={instructor ? `${instructor.name.split(' ')[0]}’s Pilates studio` : 'Mia’s Pilates studio'} />
+
+      {/* 3. Product Card */}
+      {selected ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`View ${selected.title}`}
+          onPress={() => onProduct(selected.id)}
+          style={local.productCardBox}
+        >
+          <OrbitImage source={artwork(selected)} style={local.productCardThumb} resizeMode="contain" />
+          <View style={styles.flex1}>
+            <Text style={local.productEyebrow}>MOVEACTIVE EDIT</Text>
+            <Text style={local.productTitleText} numberOfLines={1}>
+              {selected.title}
+            </Text>
+            <Text style={local.productMetaText}>
+              {money(variant?.price, selected.currency)} · {variant?.title ?? 'Peony / Ivory'}
+            </Text>
+          </View>
+          <BagIcon />
+        </Pressable>
+      ) : (
+        <Text style={styles.bodyCopy}>No products are tagged in this session yet.</Text>
+      )}
+
+      {/* 4. Supporting text */}
+      <Text style={local.supportingCopy}>
+        Your purchase supports the instructor who recommended this edit.
+      </Text>
+
+      {/* 5. ADD TO BAG Pink Button */}
+      <Pressable
+        accessibilityRole="button"
+        disabled={busy || !variant?.available}
+        onPress={() => { if (variant && selected) { onAdd(selected, variant.id); } }}
+        style={[local.pinkPillButton, (busy || !variant?.available) && styles.buttonDisabled]}
+      >
+        <Text style={local.pinkPillText}>
+          {`ADD TO BAG · ${money(variant?.price, selected?.currency ?? 'AUD')}`}
+        </Text>
+        <View style={local.pinkPillArrow}>
+          <RightArrowIcon color="#202020" />
+        </View>
       </Pressable>
-      <Text style={styles.bodyCopy}>Discover the edit recommended by {instructor?.name ?? 'your studio'}.</Text>
-      <View style={styles.chipRow}>{selected.variants.map(v => <Chip key={v.id} label={`${v.title}${v.available ? '' : ' · Unavailable'}`} active={variant?.id === v.id} onPress={() => setVariantId(v.id)} />)}</View>
-      <View style={local.pinkButton}><Button secondary tone="pink" label={`Add to bag · ${money(variant?.price, selected.currency)}`} disabled={busy || !variant?.available} onPress={() => { if (variant) { onAdd(selected, variant.id); } }} /></View>
-    </> : <Text style={styles.bodyCopy}>No products are tagged in this session yet.</Text>}
-    <Button secondary label="Keep exploring" onPress={onKeepExploring} />
-    {workout.studio && <MapPreview studio={workout.studio} onOpen={() => onMap(workout.studio!)} />}
-    {event && event.studioId === workout.studioId && <View style={local.eventCard}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Reformer workshop details" accessibilityState={{ expanded: eventOpen }} onPress={() => setEventOpen(!eventOpen)} style={local.eventRow}>
-        <View style={local.dateTile}><Text style={styles.meta}>{event.weekday}</Text><Text style={local.day}>{event.day}</Text></View><View style={styles.flex1}><Text style={styles.label}>EVENT CONCEPT</Text><Text style={styles.cardTitle}>{event.title}</Text><Text style={styles.meta}>Example event · External booking</Text></View><Text style={styles.chevron}>{eventOpen ? '−' : '›'}</Text>
+
+      {/* 6. KEEP EXPLORING White Button */}
+      <Pressable
+        accessibilityRole="button"
+        onPress={onKeepExploring}
+        style={local.whitePillButton}
+      >
+        <Text style={local.whitePillText}>KEEP EXPLORING</Text>
+        <View style={local.whitePillArrow}>
+          <RightArrowIcon color="#202020" />
+        </View>
       </Pressable>
-      {eventOpen && <><Text style={styles.bodyCopy}>A sample workshop at {workout.studio?.name ?? 'your studio'}. Confirm dates, availability and bookings directly with the studio.</Text><Button secondary label="View workshop studio" onPress={() => onStudio(workout.studioId)} /></>}
-    </View>}
-  </ScrollView>;
+
+      {/* 7. Map Preview Card */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open map for ${studioName}`}
+        onPress={() => onMap(workout.studio ?? fallbackStudio)}
+        style={local.mapCardBox}
+      >
+        <View style={local.roadOne} />
+        <View style={local.roadTwo} />
+        {/* Pin 1 (purple/pink) */}
+        <View style={local.pinOne}>
+          <Text style={local.pinGlyphPurple}>📍</Text>
+        </View>
+        {/* Pin 2 (dark) */}
+        <View style={local.pinTwo}>
+          <Text style={local.pinGlyphDark}>⌖</Text>
+        </View>
+        {/* Map Preview pill badge */}
+        <View style={local.mapBadge}>
+          <Text style={local.mapBadgeIcon}>⌖</Text>
+          <Text style={local.mapBadgeText}>Map preview</Text>
+        </View>
+      </Pressable>
+
+      {/* 8. Event Concept Card */}
+      {event && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Event concept details"
+          onPress={() => onStudio(workout.studioId || event.studioId)}
+          style={local.eventCardBox}
+        >
+          <View style={local.dateTileBox}>
+            <Text style={local.dateWeekday}>{event.weekday ?? 'SAT'}</Text>
+            <Text style={local.dateDay}>{event.day ?? '24'}</Text>
+          </View>
+          <View style={styles.flex1}>
+            <Text style={local.eventEyebrow}>EVENT CONCEPT</Text>
+            <Text style={local.eventTitle} numberOfLines={1}>{event.title ?? 'Reformer fundamentals workshop'}</Text>
+            <Text style={local.eventMeta} numberOfLines={1}>
+              Saturday · {studioName} · External booking
+            </Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+      )}
+    </ScrollView>
+  );
 }
 
 const local = StyleSheet.create({
@@ -106,10 +193,37 @@ const local = StyleSheet.create({
   thumbnail: { borderWidth: 1, borderColor: '#e6e1da', padding: 3, borderRadius: 7 }, selected: { borderColor: '#202020' }, thumbImage: { width: 45, height: 45, borderRadius: 4 },
   membershipCard: { backgroundColor: '#dfecf2', borderRadius: 16, padding: 22, minHeight: 175, justifyContent: 'center' }, membershipTitle: { fontSize: 27, fontWeight: '700', color: '#202020', letterSpacing: -1, marginBottom: 10 },
   faq: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#ece8e5', paddingVertical: 13, marginVertical: 16 },
-  tagCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#eeeadf', padding: 12, borderRadius: 12, marginBottom: 16 }, tagPhoto: { width: 70, height: 88, borderRadius: 8 },
-  pinkButton: { backgroundColor: '#efdae5', borderRadius: 30, marginTop: 12, marginBottom: 6 },
-  map: { height: 170, overflow: 'hidden', backgroundColor: '#e7e4dc', borderRadius: 12, marginTop: 5, marginBottom: 12 },
-  roadOne: { position: 'absolute', height: 16, width: '140%', backgroundColor: '#fff', top: 60, left: -20, transform: [{ rotate: '-20deg' }] }, roadTwo: { position: 'absolute', height: 16, width: '140%', backgroundColor: '#fff', top: 65, left: -20, transform: [{ rotate: '54deg' }] },
-  mapPin: { position: 'absolute', right: '24%', top: 65, backgroundColor: '#202020', borderRadius: 20, padding: 6 }, pinText: { color: '#fff', fontSize: 24 }, mapCaption: { position: 'absolute', bottom: 9, left: 9, backgroundColor: '#ffffffeb', padding: 7, borderRadius: 7 },
-  eventCard: { backgroundColor: '#f7f2ee', borderRadius: 12, padding: 12 }, eventRow: { flexDirection: 'row', alignItems: 'center', gap: 12 }, dateTile: { borderWidth: 1, borderColor: '#ded8d1', borderRadius: 5, width: 46, padding: 6, alignItems: 'center' }, day: { color: '#202020', fontSize: 25 },
+
+  tagEyebrow: { fontSize: 10, fontWeight: '700', letterSpacing: 1.3, color: '#8d8883', marginTop: 4, marginBottom: 4 },
+  productCardBox: { backgroundColor: '#f2ede4', borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  productCardThumb: { width: 68, height: 68, borderRadius: 10, backgroundColor: '#ffffff', marginRight: 12 },
+  productEyebrow: { fontSize: 9, fontWeight: '700', letterSpacing: 1.1, color: '#8d8883' },
+  productTitleText: { fontSize: 14, fontWeight: '700', color: '#202020', marginTop: 3 },
+  productMetaText: { fontSize: 11, color: '#77736f', marginTop: 3 },
+  supportingCopy: { fontSize: 12, lineHeight: 18, color: '#77736f', marginBottom: 16 },
+  pinkPillButton: { backgroundColor: '#eddde5', height: 50, borderRadius: 25, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, marginBottom: 10 },
+  pinkPillText: { fontSize: 12, fontWeight: '700', color: '#202020', letterSpacing: 0.5 },
+  pinkPillArrow: { position: 'absolute', right: 20, width: 18, height: 20, justifyContent: 'center', alignItems: 'center' },
+  whitePillButton: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#202020', height: 50, borderRadius: 25, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, marginBottom: 16 },
+  whitePillText: { fontSize: 12, fontWeight: '700', color: '#202020', letterSpacing: 0.5 },
+  whitePillArrow: { position: 'absolute', right: 20, width: 18, height: 20, justifyContent: 'center', alignItems: 'center' },
+
+  mapCardBox: { height: 185, borderRadius: 18, overflow: 'hidden', backgroundColor: '#e7e3db', position: 'relative', marginBottom: 14 },
+  roadOne: { position: 'absolute', height: 26, width: '150%', backgroundColor: '#ffffff', top: 50, left: -40, transform: [{ rotate: '-24deg' }] },
+  roadTwo: { position: 'absolute', height: 26, width: '150%', backgroundColor: '#ffffff', top: 72, left: -40, transform: [{ rotate: '48deg' }] },
+  pinOne: { position: 'absolute', top: 54, left: '26%', width: 34, height: 34, borderRadius: 17, backgroundColor: '#eadfe7', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#ffffff', elevation: 2 },
+  pinGlyphPurple: { fontSize: 14 },
+  pinTwo: { position: 'absolute', top: 108, right: '28%', width: 34, height: 34, borderRadius: 17, backgroundColor: '#202020', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#ffffff', elevation: 2 },
+  pinGlyphDark: { fontSize: 14, color: '#ffffff' },
+  mapBadge: { position: 'absolute', bottom: 12, left: 12, backgroundColor: '#ffffff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6, elevation: 2 },
+  mapBadgeIcon: { fontSize: 12, color: '#202020' },
+  mapBadgeText: { fontSize: 11, fontWeight: '700', color: '#202020' },
+
+  eventCardBox: { backgroundColor: '#f2ede4', borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  dateTileBox: { width: 48, height: 54, borderRadius: 8, borderWidth: 1, borderColor: '#ded8d0', backgroundColor: '#faf7f2', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  dateWeekday: { fontSize: 9, fontWeight: '600', color: '#77736f' },
+  dateDay: { fontSize: 22, fontWeight: '700', color: '#202020', lineHeight: 26 },
+  eventEyebrow: { fontSize: 9, fontWeight: '700', letterSpacing: 1.2, color: '#8d8883' },
+  eventTitle: { fontSize: 13, fontWeight: '700', color: '#202020', marginTop: 2 },
+  eventMeta: { fontSize: 10, color: '#77736f', marginTop: 2 },
 });

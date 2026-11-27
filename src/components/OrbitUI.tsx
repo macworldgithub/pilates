@@ -138,4 +138,21 @@ export const styles = StyleSheet.create({
   toast: { position: 'absolute', left: 24, right: 24, bottom: 76, borderRadius: 13, backgroundColor: C.ink, paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center' }, toastText: { color: C.paper, fontSize: 11, fontWeight: '600' },
 });
 
-export { Button, Chip, Heading, Photo, SectionTitle, ProductCard, TopBar, BottomNav, C };
+const BagIcon = () => (
+  <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 11, height: 5, borderTopLeftRadius: 5, borderTopRightRadius: 5, borderWidth: 1.5, borderColor: '#202020', borderBottomWidth: 0, marginBottom: -1 }} />
+    <View style={{ width: 17, height: 15, borderRadius: 3, borderWidth: 1.5, borderColor: '#202020', alignItems: 'center' }}>
+      <View style={{ width: 7, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, borderWidth: 1.2, borderColor: '#202020', borderTopWidth: 0, marginTop: 1 }} />
+    </View>
+  </View>
+);
+
+const RightArrowIcon = ({ color = '#202020' }: { color?: string }) => (
+  <View style={{ width: 18, height: 20, position: 'relative' }}>
+    <View style={{ position: 'absolute', left: 0, top: 9, width: 18, height: 2, backgroundColor: color }} />
+    <View style={{ position: 'absolute', left: 8, top: 6, width: 10, height: 2, backgroundColor: color, transform: [{ rotate: '45deg' }] }} />
+    <View style={{ position: 'absolute', left: 8, bottom: 6, width: 10, height: 2, backgroundColor: color, transform: [{ rotate: '-45deg' }] }} />
+  </View>
+);
+
+export { Button, Chip, Heading, Photo, SectionTitle, ProductCard, TopBar, BottomNav, BagIcon, RightArrowIcon, C };

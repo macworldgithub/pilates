@@ -1,12 +1,13 @@
 import { DeliveryPreview, MembershipScreen, ProductGallery, ProductTagScreen } from './src/components/ReferenceScreens';
 import { OrbitImage } from './src/components/OrbitImage';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Linking, Pressable, ScrollView, StatusBar, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Linking, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { api, ApiError, money } from './src/api/client';
 import type { AppConfig, Area, Cart, CartItem, CheckoutInput, Format, Instructor, Offer, Order, Product, Quote, Referral, Session, Studio, Workout } from './src/api/types';
 import { artwork } from './src/data/artwork';
-import { BottomNav, Button, Chip, Heading, Photo, ProductCard, SectionTitle, styles, TopBar } from './src/components/OrbitUI';
+import { fallbackInstructor, fallbackProduct, fallbackStudio, fallbackWorkout } from './src/data/fallbackData';
+import { BagIcon, BottomNav, Button, Chip, Heading, Photo, ProductCard, RightArrowIcon, SectionTitle, styles, TopBar } from './src/components/OrbitUI';
 import { StudioCard, WorkoutCard } from './src/components/OrbitCards';
 import { AdminPanel } from './src/components/AdminPanel';
 import type { Screen } from './src/types';
@@ -180,7 +181,7 @@ function App() {
     if (screen === 'staffLogin' || screen === 'admin' || screen === 'onboarding') { return; }
     const previous = navigationHistory.current.pop();
     if (previous) { setScreen(previous); return; }
-    const destinations: Partial<Record<Screen, Screen>> = { studio: 'studios', instructor: studio ? 'studio' : 'discover', session: 'discover', product: 'shop', bag: 'shop', checkout: 'bag', order: 'you', productTag: 'session', membership: 'you', referral: 'you', staffLogin: session?.profile?.onboardingComplete ? 'you' : 'onboarding' };
+    const destinations: Partial<Record<Screen, Screen>> = { studio: 'studios', instructor: studio ? 'studio' : 'discover', session: 'discover', product: 'shop', bag: 'shop', checkout: 'bag', order: 'you', productTag: studio ? 'studio' : 'session', membership: 'you', referral: 'you', staffLogin: session?.profile?.onboardingComplete ? 'you' : 'onboarding' };
     setScreen(screen === 'session' ? (tab === 'move' ? 'move' : 'discover') : destinations[screen] ?? tab);
   }, [screen, studio, tab, session?.profile?.onboardingComplete]);
   useEffect(() => {
@@ -196,7 +197,14 @@ function App() {
     setAccess(undefined); setStaffPassword(''); setError(''); setNotice('');
     navigationHistory.current = []; invalidateLists(); setScreen('staffLogin');
   });
-  const openStudio = (id: string) => task(async () => { const next = await api.studio(id); setStudio(next); navigate('studio'); api.event('studio_opened', id); });
+  const openStudio = (id: string) => task(async () => {
+    const next = await api.studio(id);
+    setStudio(next);
+    const primaryWk = next.workouts?.[0] ?? workouts.find(w => w.studioId === id) ?? workouts[0] ?? fallbackWorkout;
+    setWorkout({ ...primaryWk, studio: next });
+    navigate('studio');
+    api.event('studio_opened', id);
+  });
   const openInstructor = (id: string) => task(async () => { setInstructor(await api.instructor(id)); navigate('instructor'); });
   const openWorkout = (id: string) => task(async () => { setWorkout(await api.workout(id)); navigate('session'); api.event('workout_opened', id); });
   const openProduct = (id: string) => task(async () => {
@@ -291,12 +299,14 @@ function App() {
         })} />
         <Text style={styles.finePrint}>Internal simulated prototype. Product availability, checkout and referral attribution use sample data.</Text>
       </ScrollView>;
+
+      
       case 'onboarding': return <ScrollView contentContainerStyle={styles.content}>
         <OrbitImage source={artwork({ imageUrl: config?.heroImageUrl })} style={styles.onboardHero} imageStyle={styles.onboardImage}><View style={styles.onboardShade} /><View style={styles.onboardCopy}><Text style={styles.onboardEyebrow}>YOUR PILATES WORLD</Text><Text style={styles.onboardTitle}>Find your next move.</Text><Text style={styles.onboardSub}>Fresh sessions. Studios you’ll love. Made for the way you move.</Text></View></OrbitImage>
         <View style={styles.onboardBody}><Text style={styles.sectionTitle}>Let’s make it yours</Text><Text style={styles.label}>YOUR AREA</Text><View style={styles.locationField}><Text style={styles.locationText}>{area?.area}</Text></View><View style={styles.chipRow}>{(config?.areas ?? []).map(a => <Chip key={a.area} label={a.area} active={area?.area === a.area} onPress={() => setArea(a)} />)}</View><Text style={styles.finePrint}>Choose a sample area for internal playtesting. Device location is not requested.</Text>
           <Text style={[styles.label, styles.interestLabel]}>WHAT DO YOU LOVE?</Text><View style={styles.chipRow}>{(config?.interestOptions ?? []).map(i => <Chip key={i.value} label={i.label} active={interest === i.value} onPress={() => setInterest(i.value)} />)}</View>
           <View style={styles.chipRow}>{(config?.formats ?? ['reformer', 'mat']).map(f => <Chip key={f} label={f === 'mat' ? 'Mat Pilates' : 'Reformer'} active={selectedFormats.includes(f)} onPress={() => toggleFormat(f)} />)}</View>
-          <Button label="Build my Pilates world →" disabled={busy || !session || !area || !interest} onPress={() => task(async () => { setSession(await api.profile({ ...area, interests: [interest], formats: selectedFormats.length ? selectedFormats : ['reformer'], onboardingComplete: true })); setScreen('discover'); setTab('discover'); })} />
+          <Button label="Build my Pilates world" trailingIcon="arrow" disabled={busy || !session || !area || !interest} onPress={() => task(async () => { setSession(await api.profile({ ...area, interests: [interest], formats: selectedFormats.length ? selectedFormats : ['reformer'], onboardingComplete: true })); setScreen('discover'); setTab('discover'); })} />
           <Button secondary label="Sign out" disabled={busy} onPress={signOut} />
         </View>
       </ScrollView>;
@@ -351,29 +361,242 @@ function App() {
         </View>
         <Text style={styles.resultCount}>{studios.length} MATCHING STUDIOS</Text>{studios.map(s => <StudioCard key={s.id} studio={s} onPress={() => openStudio(s.id)} />)}{!studios.length && noResults('No studios match your search or filters. Try removing filters or toggling areas.')}
       </ScrollView>;
-      case 'studio': return studio && <ScrollView contentContainerStyle={styles.content}>
-        <Photo uri={artwork(studio)} height={225} radius={0} /><Heading title={studio.name} subtitle={studio.address} /><View style={styles.chipRow}>{studio.formats.map(f => <Chip key={f} label={f} active />)}</View>
-        <Text style={styles.bodyCopy}>{studio.description}</Text><Text style={styles.meta}>{studio.partnerType === 'listed' ? 'Studio listing' : 'Studio partner / stockist'}</Text>
-        <Button label="Visit studio website ↗" secondary onPress={() => openWebsite(studio.websiteUrl, studio.id)} /><Button label="Open studio booking site ↗" secondary onPress={() => openWebsite(studio.bookingUrl, studio.id)} />
-        <SectionTitle title="Meet your instructors" />{studio.instructors?.map(i => <Pressable key={i.id} onPress={() => openInstructor(i.id)} style={styles.personRow}><OrbitImage source={artwork(i)} style={styles.personImage} /><Text style={styles.cardTitle}>{i.name}</Text><Text style={styles.chevron}>›</Text></Pressable>)}{!studio.instructors?.length && <Text style={styles.meta}>No published instructors yet.</Text>}
-        <SectionTitle title="Selected for you" />{workoutCards(studio.workouts ?? [])}
-        {studio.referrals?.map(r => <Button key={r.code} secondary label={`Studio connection · ${r.code}`} onPress={() => openReferral(r.code)} />)}
-      </ScrollView>;
+      case 'studio': {
+        const currentWorkout = workout ?? studio?.workouts?.[0] ?? workouts.find(w => w.studioId === studio?.id) ?? workouts[0] ?? fallbackWorkout;
+        const currentInstructor = studio?.instructors?.[0] ?? currentWorkout.instructors?.[0] ?? fallbackInstructor;
+        const currentProduct = currentWorkout.products?.[0] ?? fallbackProduct;
+        const heroArtwork = artwork(studio ?? fallbackStudio);
+        const secondHeroArtwork = artwork(currentWorkout);
+        const instructorArtwork = artwork(currentInstructor);
+        const productArtwork = artwork(currentProduct);
+
+        return (
+          <ScrollView contentContainerStyle={styles.content}>
+            {/* Top Hero with Overlay Text */}
+            <View style={localStudioStyles.heroWrap}>
+              <OrbitImage
+                source={heroArtwork}
+                style={localStudioStyles.heroImage}
+                resizeMode="cover"
+              />
+              <View style={localStudioStyles.heroScrim}>
+                <Text style={localStudioStyles.heroOverlayText}>
+                  {studio?.name ?? currentWorkout.title}
+                </Text>
+              </View>
+            </View>
+
+            {/* Eyebrow */}
+            <Text style={localStudioStyles.eyebrow}>
+              {`${(currentWorkout.level ?? 'beginner').toUpperCase()} · ${currentWorkout.durationMinutes ?? 15} MIN`}
+            </Text>
+
+            {/* Heading & Subtitle - Exact Studio Name & Details */}
+            <Heading
+              title={studio?.name ?? 'Studio Profile'}
+              subtitle={studio?.description ?? currentWorkout.description}
+            />
+
+            {/* Verified Instructor Card */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`View instructor ${currentInstructor.name}`}
+              onPress={() => openInstructor(currentInstructor.id)}
+              style={localStudioStyles.instructorCard}
+            >
+              <OrbitImage
+                source={instructorArtwork}
+                style={localStudioStyles.instructorAvatar}
+                resizeMode="cover"
+              />
+              <View style={styles.flex1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.cardTitle}>{currentInstructor.name}</Text>
+                  <View style={localStudioStyles.verifiedBadge}>
+                    <Text style={localStudioStyles.verifiedCheck}>✓</Text>
+                  </View>
+                </View>
+                <Text style={styles.meta}>
+                  {studio?.name ?? 'Core Collective'} · Verified
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+
+            {/* Black Pill: START SESSION → */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Start session"
+              onPress={() => {
+                setWorkout(currentWorkout);
+                setNotice(`Starting session · ${currentWorkout.title}`);
+              }}
+              style={localStudioStyles.startSessionButton}
+            >
+              <Text style={localStudioStyles.startSessionText}>START SESSION</Text>
+              <View style={localStudioStyles.buttonArrow}>
+                <RightArrowIcon color="#ffffff" />
+              </View>
+            </Pressable>
+
+            {/* Shop Edit Card */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Shop ${currentInstructor.name.split(' ')[0]}’s studio edit`}
+              onPress={() => {
+                setWorkout(currentWorkout);
+                navigate('productTag');
+              }}
+              style={localStudioStyles.shopEditCard}
+            >
+              <OrbitImage
+                source={productArtwork}
+                style={localStudioStyles.shopEditThumb}
+                resizeMode="contain"
+              />
+              <View style={styles.flex1}>
+                <Text style={localStudioStyles.editEyebrow}>MOVEACTIVE EDIT</Text>
+                <Text style={localStudioStyles.editTitle}>
+                  {`Shop ${currentInstructor.name.split(' ')[0]}’s studio edit`}
+                </Text>
+                <Text style={localStudioStyles.editMeta}>
+                  {`${currentWorkout.products?.length ?? 2} MoveActive essentials tagged`}
+                </Text>
+              </View>
+              <BagIcon />
+            </Pressable>
+
+            {/* Second Hero Image Card (Image hero) */}
+            <View style={localStudioStyles.secondHeroCard}>
+              <OrbitImage
+                source={secondHeroArtwork}
+                style={localStudioStyles.secondHeroImage}
+                resizeMode="cover"
+              />
+              <View style={localStudioStyles.heroScrim}>
+                <Text style={localStudioStyles.heroOverlayText}>Image hero</Text>
+              </View>
+            </View>
+          </ScrollView>
+        );
+      }
       case 'instructor': return instructor && <ScrollView contentContainerStyle={styles.content}>
         <OrbitImage source={artwork(instructor)} style={styles.instructorHero} /><Text style={styles.eyebrow}>{instructor.independent ? 'MOVEACTIVE APPROVED' : 'STUDIO-AFFILIATED INSTRUCTOR'}</Text><Heading title={instructor.name} subtitle={instructor.bio} />
         {instructor.studios?.map(s => <StudioCard key={s.id} studio={s} onPress={() => openStudio(s.id)} />)}
         {instructor.referrals?.map(r => <Pressable key={r.code} onPress={() => openReferral(r.code)} style={styles.referralCard}><Text style={styles.cardTitle}>MoveActive recommendation code</Text><Text style={styles.code}>{r.code}</Text><Text style={styles.meta}>Demo attribution · no commissions</Text></Pressable>)}
         <SectionTitle title={`Sessions with ${instructor.name}`} />{workoutCards(instructor.workouts ?? [])}
       </ScrollView>;
-      case 'session': return workout && <ScrollView contentContainerStyle={styles.content}>
-        <Pressable onPress={() => setNotice('Video preview is simulated in this prototype.')}><OrbitImage source={artwork(workout)} style={styles.sessionHero} imageStyle={styles.sessionHeroImage}><View style={styles.bigPlay}><Text style={styles.playIcon}>▶</Text></View></OrbitImage></Pressable>
-        <Text style={styles.eyebrow}>{workout.level.toUpperCase()} · {workout.durationMinutes} MIN · {workout.format.toUpperCase()}</Text><Heading title={workout.title} subtitle={workout.description} />
-        {workout.instructors?.map(i => <Pressable key={i.id} onPress={() => openInstructor(i.id)} style={styles.personRow}><OrbitImage source={artwork(i)} style={styles.personImageSmall} /><Text style={styles.cardTitle}>{i.name}</Text></Pressable>)}
-        {!!workout.studio && <Button secondary label={workout.studio.name} onPress={() => openStudio(workout.studioId)} />}
-        <Button label="Start session ▶" onPress={() => setNotice('Video playback is a preview — full session content will be available after beta.')} />
-        {!!workout.products?.[0] && <Pressable accessibilityRole="button" accessibilityLabel="Shop this studio edit" onPress={() => navigate('productTag')} style={styles.editCard}><Text style={styles.label}>MOVEACTIVE EDIT</Text><View style={styles.tagProduct}><OrbitImage source={artwork(workout.products[0])} style={styles.tagImage} /><View style={styles.flex1}><Text style={styles.cardTitle}>Shop this studio edit</Text><Text style={styles.meta}>{workout.products[0].title}</Text></View><Text style={styles.chevron}>›</Text></View></Pressable>}
-        <SectionTitle title="More ways to move" />{workoutCards(workouts.filter(value => value.id !== workout.id))}
-      </ScrollView>;
+      case 'session': {
+        const currentWorkout = workout ?? workouts[0] ?? fallbackWorkout;
+        const currentInstructor = currentWorkout.instructors?.[0] ?? fallbackInstructor;
+        const currentProduct = currentWorkout.products?.[0] ?? fallbackProduct;
+        const heroArtwork = artwork(currentWorkout);
+        const secondHeroArtwork = artwork(currentWorkout.studio ?? fallbackStudio);
+        const instructorArtwork = artwork(currentInstructor);
+        const productArtwork = artwork(currentProduct);
+
+        return (
+          <ScrollView contentContainerStyle={styles.content}>
+            <View style={localStudioStyles.heroWrap}>
+              <OrbitImage
+                source={heroArtwork}
+                style={localStudioStyles.heroImage}
+                resizeMode="cover"
+              />
+              <View style={localStudioStyles.heroScrim}>
+                <Text style={localStudioStyles.heroOverlayText}>
+                  {currentWorkout.title}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={localStudioStyles.eyebrow}>
+              {`${(currentWorkout.level ?? 'beginner').toUpperCase()} · ${currentWorkout.durationMinutes ?? 15} MIN`}
+            </Text>
+
+            <Heading
+              title={currentWorkout.title.replace(/^\d+-minute\s+/i, '') || currentWorkout.title}
+              subtitle={currentWorkout.description}
+            />
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`View instructor ${currentInstructor.name}`}
+              onPress={() => openInstructor(currentInstructor.id)}
+              style={localStudioStyles.instructorCard}
+            >
+              <OrbitImage
+                source={instructorArtwork}
+                style={localStudioStyles.instructorAvatar}
+                resizeMode="cover"
+              />
+              <View style={styles.flex1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.cardTitle}>{currentInstructor.name}</Text>
+                  <View style={localStudioStyles.verifiedBadge}>
+                    <Text style={localStudioStyles.verifiedCheck}>✓</Text>
+                  </View>
+                </View>
+                <Text style={styles.meta}>
+                  {currentWorkout.studio?.name ?? 'Core Collective'} · Verified
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Start session"
+              onPress={() => {
+                setNotice(`Starting session · ${currentWorkout.title}`);
+              }}
+              style={localStudioStyles.startSessionButton}
+            >
+              <Text style={localStudioStyles.startSessionText}>START SESSION</Text>
+              <View style={localStudioStyles.buttonArrow}>
+                <RightArrowIcon color="#ffffff" />
+              </View>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Shop ${currentInstructor.name.split(' ')[0]}’s studio edit`}
+              onPress={() => {
+                setWorkout(currentWorkout);
+                navigate('productTag');
+              }}
+              style={localStudioStyles.shopEditCard}
+            >
+              <OrbitImage
+                source={productArtwork}
+                style={localStudioStyles.shopEditThumb}
+                resizeMode="contain"
+              />
+              <View style={styles.flex1}>
+                <Text style={localStudioStyles.editEyebrow}>MOVEACTIVE EDIT</Text>
+                <Text style={localStudioStyles.editTitle}>
+                  {`Shop ${currentInstructor.name.split(' ')[0]}’s studio edit`}
+                </Text>
+                <Text style={localStudioStyles.editMeta}>
+                  {`${currentWorkout.products?.length ?? 2} MoveActive essentials tagged`}
+                </Text>
+              </View>
+              <BagIcon />
+            </Pressable>
+
+            <View style={localStudioStyles.secondHeroCard}>
+              <OrbitImage
+                source={secondHeroArtwork}
+                style={localStudioStyles.secondHeroImage}
+                resizeMode="cover"
+              />
+              <View style={localStudioStyles.heroScrim}>
+                <Text style={localStudioStyles.heroOverlayText}>Image hero</Text>
+              </View>
+            </View>
+          </ScrollView>
+        );
+      }
       case 'shop': return <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.eyebrow}>MOVEACTIVE STORE · D2C</Text><Heading title="Made for every move." subtitle="Studio favourites and thoughtful essentials for your practice." />
         <View style={styles.searchBox}><Text style={styles.searchIcon}>⌕</Text><TextInput accessibilityLabel="Search products" value={search} onChangeText={setSearch} placeholder="Search grip socks, mats and equipment" placeholderTextColor="#9e9994" maxLength={100} style={styles.searchInput} /></View>
@@ -493,4 +716,144 @@ function App() {
     {!!notice && <Pressable style={styles.toast} onPress={() => setNotice('')}><Text style={styles.toastText}>{notice} ×</Text></Pressable>}
   </SafeAreaView></SafeAreaProvider>;
 }
+
+const localStudioStyles = StyleSheet.create({
+  heroWrap: {
+    height: 235,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#e9efea',
+    marginBottom: 14,
+    position: 'relative',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 75,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  heroOverlayText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  eyebrow: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.3,
+    color: '#8d8883',
+    marginBottom: 4,
+  },
+  instructorCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ece8e5',
+    padding: 12,
+    backgroundColor: '#ffffff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  instructorAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#e9efea',
+    marginRight: 12,
+  },
+  verifiedBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#202020',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+  },
+  verifiedCheck: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 12,
+  },
+  startSessionButton: {
+    backgroundColor: '#202020',
+    height: 50,
+    borderRadius: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 14,
+    position: 'relative',
+  },
+  startSessionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  buttonArrow: {
+    position: 'absolute',
+    right: 20,
+    width: 18,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shopEditCard: {
+    backgroundColor: '#f2ede4',
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  shopEditThumb: {
+    width: 62,
+    height: 62,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    marginRight: 12,
+  },
+  editEyebrow: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    color: '#8d8883',
+  },
+  editTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#202020',
+    marginTop: 2,
+  },
+  editMeta: {
+    fontSize: 11,
+    color: '#77736f',
+    marginTop: 2,
+  },
+  secondHeroCard: {
+    height: 215,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#e9efea',
+    marginBottom: 20,
+    position: 'relative',
+  },
+  secondHeroImage: {
+    width: '100%',
+    height: '100%',
+  },
+});
+
 export default App;
